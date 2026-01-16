@@ -11,6 +11,9 @@ class TestLoto649Strategies(unittest.TestCase):
         self.assertTrue(is_loto_649_prize(main_matches=0, noroc_match=True))
         self.assertFalse(is_loto_649_prize(main_matches=2, noroc_match=False))
 
+    def test_prize_rules_without_noroc(self):
+        self.assertFalse(is_loto_649_prize(main_matches=0, noroc_match=True, include_noroc=False))
+
     def test_generate_random_lines_unique(self):
         rng = random.Random(1234)
         lines = generate_random_lines(3, rng=rng)

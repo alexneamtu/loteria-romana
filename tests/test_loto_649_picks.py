@@ -14,6 +14,17 @@ class TestLoto649Picks(unittest.TestCase):
         lines = generate_picks(draws, count=2, rng=rng)
         self.assertEqual(len(lines), 2)
 
+    def test_generate_picks_without_noroc(self):
+        draws = [
+            ([1, 2, 3, 4, 5, 6], 1234567),
+            ([7, 8, 9, 10, 11, 12], 7654321),
+        ]
+        rng = random.Random(0)
+        lines = generate_picks(draws, count=2, rng=rng, include_noroc=False)
+        self.assertEqual(len(lines), 2)
+        for _main, noroc in lines:
+            self.assertIsNone(noroc)
+
 
 if __name__ == "__main__":
     unittest.main()
