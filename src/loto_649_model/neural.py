@@ -66,7 +66,7 @@ def _sample_without_replacement(weights, count, rng):
     return chosen
 
 
-def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1):
+def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_noroc: bool = True):
     rng = rng or random.SystemRandom()
     if len(draws) < 2:
         return []
@@ -94,8 +94,8 @@ def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1):
     while len(lines) < count:
         main_idxs = _sample_without_replacement(main_probs, 6, rng)
         main = sorted([i + 1 for i in main_idxs])
-        noroc = rng.randint(0, NOROC_MAX)
-        key = tuple(main) + (noroc,)
+        noroc = rng.randint(0, NOROC_MAX) if include_noroc else None
+        key = tuple(main) if noroc is None else tuple(main) + (noroc,)
         if key in seen:
             continue
         seen.add(key)

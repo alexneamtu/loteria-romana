@@ -16,14 +16,14 @@ def _sample_weighted(numbers, weights, count, rng):
     return sorted(chosen)
 
 
-def generate_random_lines(count: int, rng=None):
+def generate_random_lines(count: int, rng=None, include_noroc: bool = True):
     rng = rng or random.SystemRandom()
     lines = []
     seen = set()
     while len(lines) < count:
         main = sorted(rng.sample(range(1, 50), 6))
-        noroc = rng.randint(0, NOROC_MAX)
-        key = tuple(main) + (noroc,)
+        noroc = rng.randint(0, NOROC_MAX) if include_noroc else None
+        key = tuple(main) if noroc is None else tuple(main) + (noroc,)
         if key in seen:
             continue
         seen.add(key)
@@ -39,7 +39,7 @@ def build_frequency(draws):
     return freq
 
 
-def generate_frequency_lines(count: int, freq: dict[int, int], rng=None):
+def generate_frequency_lines(count: int, freq: dict[int, int], rng=None, include_noroc: bool = True):
     rng = rng or random.SystemRandom()
     numbers = list(range(1, 50))
     weights = [freq.get(n, 0) + 1 for n in numbers]
@@ -47,8 +47,8 @@ def generate_frequency_lines(count: int, freq: dict[int, int], rng=None):
     seen = set()
     while len(lines) < count:
         main = _sample_weighted(numbers, weights, 6, rng)
-        noroc = rng.randint(0, NOROC_MAX)
-        key = tuple(main) + (noroc,)
+        noroc = rng.randint(0, NOROC_MAX) if include_noroc else None
+        key = tuple(main) if noroc is None else tuple(main) + (noroc,)
         if key in seen:
             continue
         seen.add(key)
