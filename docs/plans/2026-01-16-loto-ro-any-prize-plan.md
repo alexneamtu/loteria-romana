@@ -8,6 +8,47 @@
 
 **Tech Stack:** Python 3.x (stdlib only), JSON/CSV, `unittest`, Markdown.
 
+## Current Data Snapshot (2026-01-16)
+**Sources:**
+- Prices: https://www.loto.ro/?page_id=1068
+- Loto 6/49 odds: https://www.loto.ro/?p=3876
+- Loto 5/40 odds: https://www.loto.ro/?p=3921
+- Joker odds + Noroc Plus rules: https://www.loto.ro/?p=3904
+
+**Prices (pret varianta simpla):**
+- Loto 6/49: 8.00 RON
+- Joker: 7.00 RON
+- Loto 5/40: 5.00 RON
+- Noroc: 4.00 RON (only with Loto 6/49)
+- Noroc Plus: 3.00 RON (only with Joker)
+- Super Noroc: 2.00 RON (only with Loto 5/40)
+- Ticket overhead listed: 0.5 RON per ticket; assume lines are grouped to minimize overhead.
+
+**Odds tables (as published):**
+- Loto 6/49: 1 in 13.983.816 (6/6), 54.200,8 (5/6), 1.032,4 (4/6), 56,66 (3/6)
+- Loto 5/40: 1 in 658.008 (5/5 in first 5), 131.602 (5/6), 1.290 (4/6)
+- Joker: 1 in 24.435.180, 1.221.759, 122.759, 6.109, 3.140, 157, 240, 60
+
+**Derived any-prize probabilities:**
+- Loto 6/49: 0.01863627 (1.8636%, ~1 in 53.66)
+- Loto 5/40: 0.00078431 (0.0784%, ~1 in 1275.00)
+- Joker: 0.02769393 (2.7694%, ~1 in 36.11)
+- Noroc: 0.0010002 (0.1000%, ~1 in 999.80)
+- Noroc Plus / Super Noroc: 0.0199 (1.99%, ~1 in 50.25)
+
+**Efficiency per RON (per line):**
+- Loto 6/49: 0.00232953
+- Joker: 0.00395628
+- Loto 5/40: 0.00015686
+- Loto 6/49 + Noroc: 0.00163482
+- Joker + Noroc Plus: 0.00470428
+- Loto 5/40 + Super Noroc: 0.00295267
+
+**Recommended allocation (50 RON):**
+- 5 x Joker + Noroc Plus (10 RON each)
+- Per-line any-prize: ~4.704% (~1 in 21.26)
+- Per-draw any-prize (5 lines): ~21.41%
+
 ### Task 1: Data model + efficiency calculation
 
 **Files:**
@@ -473,6 +514,9 @@ This project helps allocate a 50 RON budget across loto.ro games to maximize the
 2. Rank games by `any_prize_prob / line_price_ron`.
 3. Allocate budget with greedy + local swap (replace 1-2 top lines with the next-best option if it improves total probability).
 4. Generate unique Loto 6/49 lines with a trusted RNG. For multi-pool games like Joker, use quick-pick or the official rules.
+
+## Current allocation example (2026-01-16)
+- 5 x Joker + Noroc Plus (10 RON each)
 
 ## Disclaimer
 Lotteries are random. This workflow only maximizes probability per RON and reduces shared-prize risk by avoiding common patterns.
