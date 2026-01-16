@@ -13,7 +13,7 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 
 - Target games:
   - **Joker** (main numbers 1-45, Joker 1-20)
-  - **Loto 6/49 + Noroc** (main numbers 1-49, Noroc 7-digit number)
+  - **Loto 6/49 + Noroc** (main numbers 1-49, Noroc 7-digit number, optional)
 - Data source: official results pages on loto.ro.
 - Out of scope: other lotteries/games.
 
@@ -82,6 +82,12 @@ Generate 2 Loto 6/49 + Noroc variants before each draw:
 
 ```bash
 PYTHONPATH=src python scripts/generate_loto_649_picks.py
+```
+
+Omit Noroc (main numbers only):
+
+```bash
+PYTHONPATH=src python scripts/generate_loto_649_picks.py --no-noroc
 ```
 
 Reproducible Loto 6/49 variants with a fixed seed:

@@ -12,6 +12,7 @@ from loto_649_model.seed import resolve_seed
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, help="Set deterministic RNG seed")
+    parser.add_argument("--no-noroc", action="store_true", help="Omit Noroc from picks")
     args = parser.parse_args()
 
     url = "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html"
@@ -27,12 +28,16 @@ def main():
         raise SystemExit(str(exc)) from exc
 
     rng = random.Random(seed) if seed is not None else random.SystemRandom()
+    include_noroc = not args.no_noroc
     draw_tuples = [(d.main_numbers, d.noroc) for d in draws]
-    lines = generate_picks(draw_tuples, count=2, rng=rng)
+    lines = generate_picks(draw_tuples, count=2, rng=rng, include_noroc=include_noroc)
 
     for idx, (main, noroc) in enumerate(lines, 1):
-        noroc_str = f"{noroc:07d}"
-        print(f"{idx}. {', '.join(str(n) for n in main)} + N{noroc_str}")
+        if include_noroc and noroc is not None:
+            noroc_str = f"{noroc:07d}"
+            print(f"{idx}. {', '.join(str(n) for n in main)} + N{noroc_str}")
+        else:
+            print(f"{idx}. {', '.join(str(n) for n in main)}")
 
 
 if __name__ == "__main__":
