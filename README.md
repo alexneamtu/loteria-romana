@@ -27,7 +27,7 @@ Implemented:
 - Weekly picks script that prints 2 Joker lines (Variant A/B) per run.
 
 In progress / planned:
-- Add reproducible seeds / config options.
+- (none)
 
 ## Data source
 
@@ -71,6 +71,18 @@ Generate 2 variants before each draw:
 PYTHONPATH=src python scripts/generate_joker_picks.py
 ```
 
+Reproducible variants with a fixed seed:
+
+```bash
+PYTHONPATH=src python scripts/generate_joker_picks.py --seed 123
+```
+
+Or via environment variable:
+
+```bash
+JOKER_SEED=123 PYTHONPATH=src python scripts/generate_joker_picks.py
+```
+
 ## Repository layout
 
 - `src/joker_model/` - core library (parser, storage, strategies, metrics).
@@ -80,7 +92,7 @@ PYTHONPATH=src python scripts/generate_joker_picks.py
 
 ## Roadmap
 
-1. Add reproducible seeds / config options.
+1. (none)
 
 ## Limitations and ethics
 
