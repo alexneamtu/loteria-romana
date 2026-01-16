@@ -22,11 +22,13 @@ Implemented:
 - Dataset update flow (cache HTML -> CSV storage).
 - Prize rule check for Joker.
 - Random and frequency-weighted line generation.
-
-In progress / planned:
 - Neural sampler (softmax baseline).
 - Backtesting and best-strategy selection.
 - Weekly picks script that prints 7 Joker lines.
+
+In progress / planned:
+- Improve frequency weighting using historical counts by default.
+- Add reproducible seeds / config options.
 
 ## Data source
 
@@ -47,7 +49,7 @@ HTML is cached locally to avoid repeated downloads. Parsed draws are stored as C
 ## Strategies
 
 - Random: uniform sampling without replacement for main numbers.
-- Frequency-weighted: favors numbers that appear more often in historical draws.
+- Frequency-weighted: samples using a provided frequency table (historical counts wiring is on the roadmap).
 - Neural baseline: simple softmax model trained on previous draw -> next draw.
 
 ## Quickstart (current)
@@ -73,11 +75,8 @@ PYTHONPATH=src python -m unittest -v
 
 ## Roadmap
 
-1. Add the neural sampler and tests.
-2. Add backtesting and strategy selection.
-3. Add a weekly picks script (`scripts/generate_joker_picks.py`).
-4. Improve frequency strategy using historical counts.
-5. Add reproducible seeds / config options.
+1. Improve frequency strategy using historical counts.
+2. Add reproducible seeds / config options.
 
 ## Limitations and ethics
 
