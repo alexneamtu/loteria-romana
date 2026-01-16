@@ -24,7 +24,7 @@ Implemented:
 - Random and frequency-weighted line generation.
 - Neural sampler (softmax baseline).
 - Backtesting and best-strategy selection.
-- Weekly picks script that prints 7 Joker lines.
+- Weekly picks script that prints 2 Joker lines (Variant A/B) per run.
 
 In progress / planned:
 - Add reproducible seeds / config options.
@@ -63,6 +63,12 @@ Run all current tests:
 
 ```bash
 PYTHONPATH=src python -m unittest -v
+```
+
+Generate 2 variants before each draw:
+
+```bash
+PYTHONPATH=src python scripts/generate_joker_picks.py
 ```
 
 ## Repository layout

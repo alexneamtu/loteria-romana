@@ -3,9 +3,7 @@ from pathlib import Path
 
 from joker_model.fetch import update_dataset
 from joker_model.storage import load_draws
-from joker_model.backtest import pick_best_strategy
-from joker_model.strategies import build_frequency, generate_random_lines, generate_frequency_lines
-from joker_model.neural import generate_neural_lines
+from joker_model.picks import generate_picks
 
 
 def main():
@@ -18,15 +16,7 @@ def main():
 
     rng = random.SystemRandom()
     draw_tuples = [(d.main_numbers, d.joker) for d in draws]
-    best = pick_best_strategy(draw_tuples)
-
-    if best == "neural":
-        lines = generate_neural_lines(draw_tuples, 7, rng=rng)
-    elif best == "frequency":
-        freq = build_frequency(draw_tuples)
-        lines = generate_frequency_lines(7, freq, rng=rng)
-    else:
-        lines = generate_random_lines(7, rng=rng)
+    lines = generate_picks(draw_tuples, count=2, rng=rng)
 
     for idx, (main, joker) in enumerate(lines, 1):
         print(f"{idx}. {', '.join(str(n) for n in main)} + J{joker}")
