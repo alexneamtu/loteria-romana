@@ -7,7 +7,7 @@ from .strategies import build_frequency, generate_random_lines, generate_frequen
 
 def generate_picks(draws, count=2, rng=None):
     rng = rng or random.SystemRandom()
-    best = pick_best_strategy(draws)
+    best = pick_best_strategy(draws, rng=rng)
 
     if best == "neural":
         return generate_neural_lines(draws, count, rng=rng)

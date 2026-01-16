@@ -1,5 +1,6 @@
 import random
 import unittest
+from unittest.mock import patch
 
 from joker_model.picks import generate_picks
 
@@ -26,6 +27,18 @@ class TestPicks(unittest.TestCase):
         ]
         lines = generate_picks(draws, count=3, rng=random.Random(1))
         self.assertEqual(len(lines), 3)
+
+    def test_generate_picks_passes_rng_to_strategy(self):
+        draws = [
+            ([1, 2, 3, 4, 5], 1),
+            ([6, 7, 8, 9, 10], 2),
+            ([11, 12, 13, 14, 15], 3),
+        ]
+        rng = random.Random(0)
+        with patch("joker_model.picks.pick_best_strategy") as pick_best:
+            pick_best.return_value = "random"
+            generate_picks(draws, rng=rng)
+            pick_best.assert_called_once_with(draws, rng=rng)
 
 
 if __name__ == "__main__":
