@@ -4,7 +4,7 @@ from pathlib import Path
 from joker_model.fetch import update_dataset
 from joker_model.storage import load_draws
 from joker_model.backtest import pick_best_strategy
-from joker_model.strategies import generate_random_lines, generate_frequency_lines
+from joker_model.strategies import build_frequency, generate_random_lines, generate_frequency_lines
 from joker_model.neural import generate_neural_lines
 
 
@@ -17,12 +17,13 @@ def main():
     draws = load_draws(csv_path)
 
     rng = random.SystemRandom()
-    best = pick_best_strategy([(d.main_numbers, d.joker) for d in draws])
+    draw_tuples = [(d.main_numbers, d.joker) for d in draws]
+    best = pick_best_strategy(draw_tuples)
 
     if best == "neural":
-        lines = generate_neural_lines([(d.main_numbers, d.joker) for d in draws], 7, rng=rng)
+        lines = generate_neural_lines(draw_tuples, 7, rng=rng)
     elif best == "frequency":
-        freq = {n: 1 for n in range(1, 46)}
+        freq = build_frequency(draw_tuples)
         lines = generate_frequency_lines(7, freq, rng=rng)
     else:
         lines = generate_random_lines(7, rng=rng)

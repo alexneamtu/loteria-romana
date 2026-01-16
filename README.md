@@ -27,7 +27,6 @@ Implemented:
 - Weekly picks script that prints 7 Joker lines.
 
 In progress / planned:
-- Improve frequency weighting using historical counts by default.
 - Add reproducible seeds / config options.
 
 ## Data source
@@ -49,7 +48,7 @@ HTML is cached locally to avoid repeated downloads. Parsed draws are stored as C
 ## Strategies
 
 - Random: uniform sampling without replacement for main numbers.
-- Frequency-weighted: samples using a provided frequency table (historical counts wiring is on the roadmap).
+- Frequency-weighted: uses full-history counts with +1 smoothing.
 - Neural baseline: simple softmax model trained on previous draw -> next draw.
 
 ## Quickstart (current)
@@ -75,8 +74,7 @@ PYTHONPATH=src python -m unittest -v
 
 ## Roadmap
 
-1. Improve frequency strategy using historical counts.
-2. Add reproducible seeds / config options.
+1. Add reproducible seeds / config options.
 
 ## Limitations and ethics
 
