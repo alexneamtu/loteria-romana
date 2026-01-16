@@ -29,10 +29,18 @@ def generate_random_lines(count: int, rng=None):
     return lines
 
 
+def build_frequency(draws):
+    freq = {n: 0 for n in range(1, 46)}
+    for main, _ in draws:
+        for n in main:
+            freq[n] += 1
+    return freq
+
+
 def generate_frequency_lines(count: int, freq: dict[int, int], rng=None):
     rng = rng or random.SystemRandom()
     numbers = list(range(1, 46))
-    weights = [freq.get(n, 1) for n in numbers]
+    weights = [freq.get(n, 0) + 1 for n in numbers]
     lines = []
     seen = set()
     while len(lines) < count:
