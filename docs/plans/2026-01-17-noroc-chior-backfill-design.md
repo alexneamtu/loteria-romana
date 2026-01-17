@@ -1,7 +1,7 @@
 # Noroc-Chior Backfill Design
 
 ## Goal
-Add a one-time backfill path that pulls historical draws from noroc-chior.ro and appends missing dates to the existing CSV datasets without changing the normal loto.ro update pipeline. The backfill should focus on main numbers (and Joker bonus) only.
+Add a one-time rebuild path that pulls historical draws from noroc-chior.ro, rewrites the local CSV datasets from that archive, then runs the existing loto.ro update to append any newest draws not present in the archive. The rebuild should focus on main numbers (and Joker bonus) only.
 
 ## Data Source
 Use the archive pages for each game:
@@ -21,15 +21,12 @@ Each year page contains a large archive table with the header `Data<BR>extrageri
 
 All parsing will use stdlib only (`re`, `html`, `urllib.request`).
 
-## Dedupe and Conflicts
-Before writing, load existing draws from CSV and build a `date -> draw` map. For each noroc-chior draw:
-- If date is missing, append it.
-- If date exists but numbers differ, keep the existing draw (assumed from loto.ro) and log a warning for review.
+## Rebuild and Conflicts
+Rebuild each CSV from the noroc-chior archive by writing all parsed draws in date order. After the rebuild, call the existing loto.ro `update_dataset()` to append any newer draws. Since `update_dataset()` only appends dates that are missing, noroc-chior remains the source for existing dates; conflicts are logged for review if detected during rebuild.
 
 The script will be append-only and will not reorder existing CSVs.
 
 ## Scope / Non-Goals
 - No changes to the normal `update_dataset()` flow.
 - No ingestion of Noroc/Super Noroc.
-- No rewriting or resorting existing CSV files.
-
+- No ongoing merge; this is a one-time rebuild + append flow.
