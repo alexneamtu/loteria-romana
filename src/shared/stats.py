@@ -6,6 +6,7 @@ from itertools import combinations
 from dataclasses import dataclass
 
 from .math_utils import mean, std_dev
+from .recency import DEFAULT_HALF_LIFE, draw_weights
 
 
 def compute_deltas(sorted_numbers: list[int]) -> list[int]:
@@ -23,7 +24,10 @@ def compute_deltas(sorted_numbers: list[int]) -> list[int]:
     ]
 
 
-def build_delta_distribution(draws: list[list[int]]) -> dict[int, int]:
+def build_delta_distribution(
+    draws: list[list[int]],
+    weights: list[float] | None = None,
+) -> dict[int, float]:
     """Build frequency distribution of deltas from historical draws.
 
     Args:
@@ -32,11 +36,13 @@ def build_delta_distribution(draws: list[list[int]]) -> dict[int, int]:
     Returns:
         Dict mapping delta values to their occurrence counts
     """
-    delta_counts: dict[int, int] = {}
-    for main in draws:
+    delta_counts: dict[int, float] = {}
+    if weights is None:
+        weights = [1.0] * len(draws)
+    for main, weight in zip(draws, weights):
         sorted_main = sorted(main)
         for delta in compute_deltas(sorted_main):
-            delta_counts[delta] = delta_counts.get(delta, 0) + 1
+            delta_counts[delta] = delta_counts.get(delta, 0.0) + weight
     return delta_counts
 
 
@@ -47,10 +53,17 @@ class DeltaStrategy:
     This strategy samples deltas from historical distribution.
     """
 
-    def __init__(self, number_pool: int, numbers_to_pick: int, secondary_pool: int = 20):
+    def __init__(
+        self,
+        number_pool: int,
+        numbers_to_pick: int,
+        secondary_pool: int = 20,
+        half_life: float = DEFAULT_HALF_LIFE,
+    ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
+        self.half_life = half_life
         self.name = "delta"
 
     def get_probabilities(self, draws: list[list[int]]) -> list[float]:
@@ -58,18 +71,15 @@ class DeltaStrategy:
         if not draws:
             return [1.0 / self.number_pool] * self.number_pool
 
-        delta_dist = build_delta_distribution(draws)
-        total = sum(delta_dist.values()) or 1
-
         # Convert to number probabilities based on delta patterns
+        weights = draw_weights(len(draws), self.half_life)
         probs = [0.0] * self.number_pool
         for n in range(self.number_pool):
             # Score based on how often this number appears at valid delta positions
             score = 1.0
-            for main in draws:
-                sorted_main = sorted(main)
-                if n + 1 in sorted_main:
-                    score += 1.0
+            for main, weight in zip(draws, weights):
+                if n + 1 in main:
+                    score += weight
             probs[n] = score
 
         total_prob = sum(probs)
@@ -82,7 +92,8 @@ class DeltaStrategy:
         rng: random.Random,
     ) -> list[list[int]]:
         """Generate lines using sampled deltas from historical distribution."""
-        delta_dist = build_delta_distribution(draws)
+        weights = draw_weights(len(draws), self.half_life)
+        delta_dist = build_delta_distribution(draws, weights=weights)
 
         if not delta_dist:
             # Fallback to uniform deltas if no history
@@ -152,12 +163,12 @@ class HotColdStrategy:
         number_pool: int,
         numbers_to_pick: int,
         secondary_pool: int = 20,
-        decay_rate: float = 0.95,
+        half_life: float = DEFAULT_HALF_LIFE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
-        self.decay_rate = decay_rate
+        self.half_life = half_life
         self.name = "hotcold"
 
     def compute_heat_scores(
@@ -168,9 +179,8 @@ class HotColdStrategy:
         More recent draws have higher weight (exponential decay).
         """
         scores = {n: 0.0 for n in range(1, self.number_pool + 1)}
-
-        for age, main in enumerate(reversed(draws)):
-            weight = self.decay_rate ** age
+        weights = draw_weights(len(draws), self.half_life)
+        for main, weight in zip(draws, weights):
             for n in main:
                 scores[n] += weight
 
@@ -267,20 +277,31 @@ class PairStrategy:
     This strategy favors historically strong pairs.
     """
 
-    def __init__(self, number_pool: int, numbers_to_pick: int, secondary_pool: int = 20):
+    def __init__(
+        self,
+        number_pool: int,
+        numbers_to_pick: int,
+        secondary_pool: int = 20,
+        half_life: float = DEFAULT_HALF_LIFE,
+    ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
+        self.half_life = half_life
         self.name = "pairs"
 
     def build_pair_matrix(
-        self, draws: list[list[int]]
-    ) -> dict[tuple[int, int], int]:
+        self,
+        draws: list[list[int]],
+        weights: list[float] | None = None,
+    ) -> dict[tuple[int, int], float]:
         """Build pair co-occurrence counts."""
-        pair_counts: dict[tuple[int, int], int] = {}
-        for main in draws:
+        pair_counts: dict[tuple[int, int], float] = {}
+        if weights is None:
+            weights = [1.0] * len(draws)
+        for main, weight in zip(draws, weights):
             for pair in combinations(sorted(main), 2):
-                pair_counts[pair] = pair_counts.get(pair, 0) + 1
+                pair_counts[pair] = pair_counts.get(pair, 0.0) + weight
         return pair_counts
 
     def get_top_pairs(
@@ -292,7 +313,8 @@ class PairStrategy:
 
     def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get probability distribution based on pair frequency."""
-        pair_counts = self.build_pair_matrix(draws)
+        weights = draw_weights(len(draws), self.half_life)
+        pair_counts = self.build_pair_matrix(draws, weights=weights)
 
         # Score each number by how often it appears in strong pairs
         scores = {n: 1.0 for n in range(1, self.number_pool + 1)}
@@ -310,7 +332,8 @@ class PairStrategy:
         rng: random.Random,
     ) -> list[list[int]]:
         """Generate lines favoring strong pairs."""
-        pair_counts = self.build_pair_matrix(draws)
+        weights = draw_weights(len(draws), self.half_life)
+        pair_counts = self.build_pair_matrix(draws, weights=weights)
 
         if not pair_counts:
             # Fallback: generate random pairs
@@ -369,10 +392,17 @@ class SkipGapStrategy:
     are considered "overdue" and weighted higher.
     """
 
-    def __init__(self, number_pool: int, numbers_to_pick: int, secondary_pool: int = 20):
+    def __init__(
+        self,
+        number_pool: int,
+        numbers_to_pick: int,
+        secondary_pool: int = 20,
+        half_life: float = DEFAULT_HALF_LIFE,
+    ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
+        self.half_life = half_life
         self.name = "skip"
 
     def compute_gaps(self, draws: list[list[int]]) -> dict[int, int]:
@@ -390,23 +420,26 @@ class SkipGapStrategy:
         self, draws: list[list[int]]
     ) -> dict[int, float]:
         """Compute average gap for each number historically."""
-        gap_history: dict[int, list[int]] = {
-            n: [] for n in range(1, self.number_pool + 1)
-        }
+        gap_totals: dict[int, float] = {n: 0.0 for n in range(1, self.number_pool + 1)}
+        weight_totals: dict[int, float] = {n: 0.0 for n in range(1, self.number_pool + 1)}
         last_seen: dict[int, int] = {n: -1 for n in range(1, self.number_pool + 1)}
+        weights = draw_weights(len(draws), self.half_life)
 
         for idx, main in enumerate(draws):
+            weight = weights[idx] if idx < len(weights) else 1.0
             for n in main:
                 if last_seen[n] >= 0:
-                    gap_history[n].append(idx - last_seen[n])
+                    gap = idx - last_seen[n]
+                    gap_totals[n] += gap * weight
+                    weight_totals[n] += weight
                 last_seen[n] = idx
 
         # Default expected gap based on probability
         default_gap = self.number_pool / self.numbers_to_pick
 
         return {
-            n: (sum(gaps) / len(gaps) if gaps else default_gap)
-            for n, gaps in gap_history.items()
+            n: (gap_totals[n] / weight_totals[n] if weight_totals[n] > 0 else default_gap)
+            for n in range(1, self.number_pool + 1)
         }
 
     def get_probabilities(self, draws: list[list[int]]) -> list[float]:
@@ -492,10 +525,17 @@ class SumConstraintStrategy:
     with sums within a configurable range of the historical mean.
     """
 
-    def __init__(self, number_pool: int, numbers_to_pick: int, secondary_pool: int = 20):
+    def __init__(
+        self,
+        number_pool: int,
+        numbers_to_pick: int,
+        secondary_pool: int = 20,
+        half_life: float = DEFAULT_HALF_LIFE,
+    ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
+        self.half_life = half_life
         self.name = "sum"
 
     def compute_sum_distribution(
@@ -509,8 +549,21 @@ class SumConstraintStrategy:
             expected = self.numbers_to_pick * (1 + self.number_pool) / 2
             return expected, expected * 0.15
 
-        m = mean(sums)
-        s = std_dev(sums) if len(sums) > 1 else m * 0.1
+        weights = draw_weights(len(sums), self.half_life)
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            m = mean(sums)
+            s = std_dev(sums) if len(sums) > 1 else m * 0.1
+            return m, max(s, 1.0)
+
+        m = sum(value * weight for value, weight in zip(sums, weights)) / total_weight
+        variance = (
+            sum(weight * (value - m) ** 2 for value, weight in zip(sums, weights))
+            / total_weight
+            if len(sums) > 1
+            else 0.0
+        )
+        s = math.sqrt(variance) if variance > 0 else m * 0.1
 
         return m, max(s, 1.0)  # Ensure non-zero std
 
@@ -556,24 +609,31 @@ class SumConstraintStrategy:
 # Utility functions for pattern analysis
 
 def compute_odd_even_distribution(
-    draws: list[list[int]]
-) -> dict[int, int]:
+    draws: list[list[int]],
+    weights: list[float] | None = None,
+) -> dict[int, float]:
     """Count how many odd numbers per draw historically."""
-    dist: dict[int, int] = {}
-    for main in draws:
+    dist: dict[int, float] = {}
+    if weights is None:
+        weights = [1.0] * len(draws)
+    for main, weight in zip(draws, weights):
         odd_count = sum(1 for n in main if n % 2 == 1)
-        dist[odd_count] = dist.get(odd_count, 0) + 1
+        dist[odd_count] = dist.get(odd_count, 0.0) + weight
     return dist
 
 
 def compute_high_low_distribution(
-    draws: list[list[int]], midpoint: int
-) -> dict[int, int]:
+    draws: list[list[int]],
+    midpoint: int,
+    weights: list[float] | None = None,
+) -> dict[int, float]:
     """Count how many high numbers (>= midpoint) per draw."""
-    dist: dict[int, int] = {}
-    for main in draws:
+    dist: dict[int, float] = {}
+    if weights is None:
+        weights = [1.0] * len(draws)
+    for main, weight in zip(draws, weights):
         high_count = sum(1 for n in main if n >= midpoint)
-        dist[high_count] = dist.get(high_count, 0) + 1
+        dist[high_count] = dist.get(high_count, 0.0) + weight
     return dist
 
 
@@ -587,13 +647,16 @@ def count_consecutives(sorted_numbers: list[int]) -> int:
 
 
 def compute_consecutive_distribution(
-    draws: list[list[int]]
-) -> dict[int, int]:
+    draws: list[list[int]],
+    weights: list[float] | None = None,
+) -> dict[int, float]:
     """Distribution of consecutive pairs in historical draws."""
-    dist: dict[int, int] = {}
-    for main in draws:
+    dist: dict[int, float] = {}
+    if weights is None:
+        weights = [1.0] * len(draws)
+    for main, weight in zip(draws, weights):
         consec_count = count_consecutives(sorted(main))
-        dist[consec_count] = dist.get(consec_count, 0) + 1
+        dist[consec_count] = dist.get(consec_count, 0.0) + weight
     return dist
 
 
@@ -601,7 +664,8 @@ def build_position_frequency(
     draws: list[list[int]],
     numbers_to_pick: int,
     number_pool: int,
-) -> list[dict[int, int]]:
+    weights: list[float] | None = None,
+) -> list[dict[int, float]]:
     """Track which numbers appear at each sorted position.
 
     Args:
@@ -612,14 +676,15 @@ def build_position_frequency(
     Returns:
         List of dicts, one per position, mapping number to frequency
     """
-    position_counts: list[dict[int, int]] = [
+    position_counts: list[dict[int, float]] = [
         {} for _ in range(numbers_to_pick)
     ]
-
-    for main in draws:
+    if weights is None:
+        weights = [1.0] * len(draws)
+    for main, weight in zip(draws, weights):
         sorted_main = sorted(main)
         for pos, num in enumerate(sorted_main):
-            position_counts[pos][num] = position_counts[pos].get(num, 0) + 1
+            position_counts[pos][num] = position_counts[pos].get(num, 0.0) + weight
 
     return position_counts
 
@@ -637,19 +702,22 @@ class BalanceStrategy:
         number_pool: int,
         numbers_to_pick: int,
         secondary_pool: int = 20,
+        half_life: float = DEFAULT_HALF_LIFE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
         self.name = "balance"
         self.midpoint = (number_pool + 1) // 2
+        self.half_life = half_life
 
     def compute_target_ratios(
         self, draws: list[list[int]]
     ) -> tuple[dict[int, float], dict[int, float]]:
         """Compute probability distributions for odd/even and high/low counts."""
-        odd_dist = compute_odd_even_distribution(draws)
-        high_dist = compute_high_low_distribution(draws, self.midpoint)
+        weights = draw_weights(len(draws), self.half_life)
+        odd_dist = compute_odd_even_distribution(draws, weights=weights)
+        high_dist = compute_high_low_distribution(draws, self.midpoint, weights=weights)
 
         total_odd = sum(odd_dist.values()) or 1
         total_high = sum(high_dist.values()) or 1
