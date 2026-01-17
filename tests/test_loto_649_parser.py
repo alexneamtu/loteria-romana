@@ -13,7 +13,6 @@ class TestLoto649Parser(unittest.TestCase):
         self.assertIn("2026-01-15", draw_by_date)
         self.assertIn("2026-01-11", draw_by_date)
         self.assertEqual(draw_by_date["2026-01-15"].main_numbers, [11, 19, 33, 44, 45, 46])
-        self.assertEqual(draw_by_date["2026-01-15"].noroc, 6026250)
 
 
 if __name__ == "__main__":

@@ -191,10 +191,9 @@ def main():
         print("LOTO_RESULTS=Could not fetch Loto 6/49 results")
     else:
         latest_loto = loto_draws[-1]
-        noroc_str = f" + N{latest_loto.noroc}" if latest_loto.noroc else ""
-        log(f"Latest Loto 6/49: {latest_loto.date} - {latest_loto.main_numbers}{noroc_str}")
+        log(f"Latest Loto 6/49: {latest_loto.date} - {latest_loto.main_numbers}")
         print(f"LOTO_DATE={latest_loto.date}")
-        print(f"LOTO_WINNING={', '.join(str(n) for n in latest_loto.main_numbers)}{noroc_str}")
+        print(f"LOTO_WINNING={', '.join(str(n) for n in latest_loto.main_numbers)}")
 
     if not loto540_draws:
         log("No Loto 5/40 draws available")
@@ -203,10 +202,9 @@ def main():
         print("LOTO540_RESULTS=Could not fetch Loto 5/40 results")
     else:
         latest_540 = loto540_draws[-1]
-        super_noroc_str = f" + SN{latest_540.super_noroc:06d}" if latest_540.super_noroc is not None else ""
-        log(f"Latest Loto 5/40: {latest_540.date} - {latest_540.main_numbers}{super_noroc_str}")
+        log(f"Latest Loto 5/40: {latest_540.date} - {latest_540.main_numbers}")
         print(f"LOTO540_DATE={latest_540.date}")
-        print(f"LOTO540_WINNING={', '.join(str(n) for n in latest_540.main_numbers)}{super_noroc_str}")
+        print(f"LOTO540_WINNING={', '.join(str(n) for n in latest_540.main_numbers)}")
 
     # Read saved picks
     log("\n=== Loading Saved Picks ===")

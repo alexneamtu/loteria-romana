@@ -13,8 +13,8 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 
 - Target games:
   - **Joker** (main numbers 1-45, Joker 1-20)
-  - **Loto 6/49** (main numbers 1-49, Noroc optional)
-  - **Loto 5/40** (6 numbers drawn from 1-40, player picks 5, Super Noroc optional)
+  - **Loto 6/49** (main numbers 1-49)
+  - **Loto 5/40** (6 numbers drawn from 1-40, player picks 5)
 - Data source: official results pages on loto.ro.
 - Out of scope: other lotteries/games.
 
@@ -127,8 +127,6 @@ PYTHONPATH=src python scripts/generate_loto_649_picks.py --wheel 12 --wheel-guar
 --seed N               Set deterministic RNG seed
 --wheel N              Generate wheeling system with N numbers
 --wheel-guarantee N    Minimum match guarantee for wheeling
---no-noroc             Omit Noroc from Loto 6/49 picks
---no-super-noroc       Omit Super Noroc from Loto 5/40 picks
 ```
 
 ### Reproducibility
@@ -150,8 +148,8 @@ LOTO_540_SEED=123 PYTHONPATH=src python scripts/generate_loto_540_picks.py
 ### Output Format
 
 - Joker: `1. 7, 11, 44, 45, 46 + J13`
-- Loto 6/49: `1. 1, 7, 18, 27, 35, 49 + N6026250` (or without Noroc if `--no-noroc`)
-- Loto 5/40: `1. 3, 4, 7, 20, 36 + SN626628` (or without Super Noroc if `--no-super-noroc`)
+- Loto 6/49: `1. 1, 7, 18, 27, 35, 49`
+- Loto 5/40: `1. 3, 4, 7, 20, 36`
 - Wheel: Shows coverage info, then numbered tickets
 
 ## Automation
@@ -169,9 +167,9 @@ To enable Telegram notifications, set repository secrets:
 
 - Joker results:
   - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html
-- Loto 6/49 + Noroc results:
+- Loto 6/49 results:
   - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html
-- Loto 5/40 + Super Noroc results:
+- Loto 5/40 results:
   - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/540_si_super_noroc/rezultate_extrageri.html
 
 HTML is cached locally to avoid repeated downloads. Parsed draws are stored as CSV.
@@ -181,8 +179,8 @@ HTML is cached locally to avoid repeated downloads. Parsed draws are stored as C
 ```
 src/
 ├── joker_model/      # Joker pipeline (parser, storage, strategies)
-├── loto_649_model/   # Loto 6/49 + Noroc pipeline
-├── loto_540_model/   # Loto 5/40 + Super Noroc pipeline
+├── loto_649_model/   # Loto 6/49 pipeline
+├── loto_540_model/   # Loto 5/40 pipeline
 └── shared/           # Shared utilities
     ├── game_config.py        # Game configurations (pool sizes, rules)
     ├── game_strategies.py    # Unified random/frequency strategies

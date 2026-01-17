@@ -29,18 +29,17 @@ from shared.advanced_strategies import (
 # Loto 6/49 game parameters
 NUMBER_POOL = 49
 NUMBERS_TO_PICK = 6
-NOROC_MAX = 9999999  # 7 digit number
 
 
 def get_strategy_by_name(name: str):
     """Get strategy instance by name."""
     strategies = {
-        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
+        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
     }
     return strategies.get(name)
 
@@ -48,12 +47,12 @@ def get_strategy_by_name(name: str):
 def get_all_strategies():
     """Get all available strategies."""
     return [
-        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
-        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, NOROC_MAX),
+        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
     ]
 
 
@@ -62,7 +61,6 @@ def main():
         description="Generate Loto 6/49 picks using various strategies"
     )
     parser.add_argument("--seed", type=int, help="Set deterministic RNG seed")
-    parser.add_argument("--no-noroc", action="store_true", help="Omit Noroc from picks")
     parser.add_argument(
         "-n", "--count", type=int, default=2, help="Number of lines to generate"
     )
@@ -98,8 +96,7 @@ def main():
         raise SystemExit(str(exc)) from exc
 
     rng = random.Random(seed) if seed is not None else random.SystemRandom()
-    include_noroc = not args.no_noroc
-    draw_tuples = [(d.main_numbers, d.noroc) for d in draws]
+    draw_tuples = [d.main_numbers for d in draws]
 
     if args.verbose:
         print(f"Loaded {len(draws)} historical draws")
@@ -143,54 +140,36 @@ def main():
         print()
 
         for idx, ticket in enumerate(tickets, 1):
-            if include_noroc:
-                noroc = rng.randint(0, NOROC_MAX)
-                print(f"{idx}. {', '.join(str(n) for n in ticket)} + N{noroc:07d}")
-            else:
-                print(f"{idx}. {', '.join(str(n) for n in ticket)}")
+            print(f"{idx}. {', '.join(str(n) for n in ticket)}")
         return
 
     # Strategy mode
     if args.strategy == "smart":
-        main_picks = generate_smart_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
-        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+        lines = generate_smart_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
     elif args.strategy == "optimal":
-        main_picks = generate_optimal_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
-        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+        lines = generate_optimal_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
     elif args.strategy == "coverage":
-        main_picks = generate_coverage_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
-        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+        lines = generate_coverage_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
     elif args.strategy == "pattern":
-        main_picks = generate_pattern_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
-        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+        lines = generate_pattern_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
     elif args.strategy == "auto":
-        lines = generate_picks(draw_tuples, count=args.count, rng=rng, include_noroc=include_noroc)
+        lines = generate_picks(draw_tuples, count=args.count, rng=rng)
     elif args.strategy == "ensemble":
         ensemble = EnsembleVoter(
             get_all_strategies(),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
-        lines = ensemble.generate(draw_tuples, count=args.count, rng=rng)
-        # Add noroc if needed
-        if include_noroc:
-            lines = [(main, rng.randint(0, NOROC_MAX)) for main, _ in lines]
+        lines = [main for main, _ in ensemble.generate(draw_tuples, count=args.count, rng=rng)]
     else:
         strategy = get_strategy_by_name(args.strategy)
         if strategy:
-            lines = strategy.generate(draw_tuples, count=args.count, rng=rng)
-            # Add noroc if needed
-            if include_noroc:
-                lines = [(main, rng.randint(0, NOROC_MAX)) for main, _ in lines]
+            lines = [main for main, _ in strategy.generate(draw_tuples, count=args.count, rng=rng)]
         else:
-            lines = generate_picks(draw_tuples, count=args.count, rng=rng, include_noroc=include_noroc)
+            lines = generate_picks(draw_tuples, count=args.count, rng=rng)
 
-    for idx, (main, noroc) in enumerate(lines, 1):
-        if include_noroc and noroc is not None:
-            noroc_str = f"{noroc:07d}"
-            print(f"{idx}. {', '.join(str(n) for n in main)} + N{noroc_str}")
-        else:
-            print(f"{idx}. {', '.join(str(n) for n in main)}")
+    for idx, main in enumerate(lines, 1):
+        print(f"{idx}. {', '.join(str(n) for n in main)}")
 
 
 if __name__ == "__main__":

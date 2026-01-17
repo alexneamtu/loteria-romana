@@ -43,9 +43,18 @@ LOTO_649_CONFIG = GameConfig(
     name="Loto 6/49",
     number_pool=49,
     numbers_to_pick=6,
-    secondary_pool=10_000_000,  # Noroc is 0-9,999,999
-    secondary_count=1,
-    secondary_name="Noroc",
+    secondary_pool=0,
+    secondary_count=0,
+    secondary_name="",
+)
+
+LOTO_540_CONFIG = GameConfig(
+    name="Loto 5/40",
+    number_pool=40,
+    numbers_to_pick=5,
+    secondary_pool=0,
+    secondary_count=0,
+    secondary_name="",
 )
 
 

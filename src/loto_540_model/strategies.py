@@ -1,7 +1,5 @@
 import random
 
-SUPER_NOROC_MAX = 999_999
-
 
 def _sample_weighted(numbers, weights, count, rng):
     chosen = []
@@ -16,7 +14,7 @@ def _sample_weighted(numbers, weights, count, rng):
     return sorted(chosen)
 
 
-def generate_random_lines(count: int, rng=None, include_super_noroc: bool = True):
+def generate_random_lines(count: int, rng=None):
     """Generate random Loto 5/40 picks.
 
     Players pick 5 numbers from 1-40.
@@ -26,12 +24,11 @@ def generate_random_lines(count: int, rng=None, include_super_noroc: bool = True
     seen = set()
     while len(lines) < count:
         main = sorted(rng.sample(range(1, 41), 5))  # 5 numbers from 1-40
-        super_noroc = rng.randint(0, SUPER_NOROC_MAX) if include_super_noroc else None
-        key = tuple(main) if super_noroc is None else tuple(main) + (super_noroc,)
+        key = tuple(main)
         if key in seen:
             continue
         seen.add(key)
-        lines.append((main, super_noroc))
+        lines.append(main)
     return lines
 
 
@@ -41,13 +38,13 @@ def build_frequency(draws):
     Note: draws contain 6 drawn numbers, we track all of them.
     """
     freq = {n: 0 for n in range(1, 41)}
-    for main, _ in draws:
+    for main in draws:
         for n in main:
             freq[n] += 1
     return freq
 
 
-def generate_frequency_lines(count: int, freq: dict[int, int], rng=None, include_super_noroc: bool = True):
+def generate_frequency_lines(count: int, freq: dict[int, int], rng=None):
     """Generate frequency-weighted Loto 5/40 picks.
 
     Players pick 5 numbers from 1-40, weighted by historical frequency.
@@ -59,10 +56,9 @@ def generate_frequency_lines(count: int, freq: dict[int, int], rng=None, include
     seen = set()
     while len(lines) < count:
         main = _sample_weighted(numbers, weights, 5, rng)  # Pick 5 numbers
-        super_noroc = rng.randint(0, SUPER_NOROC_MAX) if include_super_noroc else None
-        key = tuple(main) if super_noroc is None else tuple(main) + (super_noroc,)
+        key = tuple(main)
         if key in seen:
             continue
         seen.add(key)
-        lines.append((main, super_noroc))
+        lines.append(main)
     return lines

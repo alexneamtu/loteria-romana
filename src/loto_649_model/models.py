@@ -5,4 +5,3 @@ from dataclasses import dataclass
 class Loto649Draw:
     date: str
     main_numbers: list[int]
-    noroc: int

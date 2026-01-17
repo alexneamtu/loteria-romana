@@ -12,8 +12,7 @@ def load_draws(path: Path) -> list[Loto540Draw]:
         reader = csv.DictReader(handle)
         for row in reader:
             main = [int(row[f"main_{i}"]) for i in range(1, 7)]
-            super_noroc = int(row["super_noroc"]) if row.get("super_noroc") else None
-            rows.append(Loto540Draw(row["date"], sorted(main), super_noroc))
+            rows.append(Loto540Draw(row["date"], sorted(main)))
     return sorted(rows, key=lambda d: d.date)
 
 
@@ -21,7 +20,7 @@ def append_draws(path: Path, draws: list[Loto540Draw]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     exists = path.exists()
     with path.open("a", encoding="utf-8", newline="") as handle:
-        fieldnames = ["date"] + [f"main_{i}" for i in range(1, 7)] + ["super_noroc"]
+        fieldnames = ["date"] + [f"main_{i}" for i in range(1, 7)]
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         if not exists:
             writer.writeheader()
@@ -34,6 +33,5 @@ def append_draws(path: Path, draws: list[Loto540Draw]) -> int:
                 "main_4": draw.main_numbers[3],
                 "main_5": draw.main_numbers[4],
                 "main_6": draw.main_numbers[5],
-                "super_noroc": draw.super_noroc if draw.super_noroc is not None else "",
             })
     return len(draws)

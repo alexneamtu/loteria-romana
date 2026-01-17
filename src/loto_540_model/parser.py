@@ -11,7 +11,7 @@ def _normalize_date(date_str: str) -> str:
 def parse_loto_540_results(html: str) -> list[Loto540Draw]:
     """Parse Loto 5/40 results from HTML.
 
-    The game draws 6 numbers from 1-40. Super Noroc is a 6-digit bonus.
+    The game draws 6 numbers from 1-40.
     """
     draws = []
 
@@ -19,20 +19,6 @@ def parse_loto_540_results(html: str) -> list[Loto540Draw]:
     date_pattern = re.compile(
         r"Detalii castiguri\s+la 5/40\s+din\s+<span>(\d{2}\.\d{2}\.\d{4})</span>"
     )
-
-    # Pattern for Super Noroc numbers and dates
-    super_noroc_pattern = re.compile(
-        r'numere-extrase-noroc"><span>(\d+)</span>.*?'
-        r"Detalii castiguri la super noroc din\s+<span>(\d{2}\.\d{2}\.\d{4})</span>",
-        re.DOTALL
-    )
-
-    # Build a map of date -> super_noroc
-    super_noroc_map = {}
-    for match in super_noroc_pattern.finditer(html):
-        noroc_num = int(match.group(1))
-        noroc_date = _normalize_date(match.group(2))
-        super_noroc_map[noroc_date] = noroc_num
 
     # Parse main draws
     for match in date_pattern.finditer(html):
@@ -47,8 +33,7 @@ def parse_loto_540_results(html: str) -> list[Loto540Draw]:
 
         date = _normalize_date(match.group(1))
         main = sorted(main_nums[-6:])  # Take last 6 numbers found
-        super_noroc = super_noroc_map.get(date)
 
-        draws.append(Loto540Draw(date, main, super_noroc))
+        draws.append(Loto540Draw(date, main))
 
     return sorted(draws, key=lambda d: d.date)

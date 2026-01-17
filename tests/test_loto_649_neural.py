@@ -22,17 +22,16 @@ class TestLoto649Neural(unittest.TestCase):
 
     def test_generate_neural_lines(self):
         draws = [
-            ([1, 2, 3, 4, 5, 6], 1234567),
-            ([7, 8, 9, 10, 11, 12], 7654321),
-            ([13, 14, 15, 16, 17, 18], 1357924),
+            [1, 2, 3, 4, 5, 6],
+            [7, 8, 9, 10, 11, 12],
+            [13, 14, 15, 16, 17, 18],
         ]
         rng = random.Random(0)
         lines = generate_neural_lines(draws, count=2, rng=rng, epochs=10, lr=0.1)
         self.assertEqual(len(lines), 2)
-        for main, noroc in lines:
+        for main in lines:
             self.assertEqual(len(main), 6)
             self.assertTrue(all(1 <= n <= 49 for n in main))
-            self.assertTrue(0 <= noroc <= 9_999_999)
 
 
 if __name__ == "__main__":

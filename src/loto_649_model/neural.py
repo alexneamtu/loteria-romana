@@ -1,8 +1,6 @@
 import math
 import random
 
-from .strategies import NOROC_MAX
-
 
 def _softmax(logits):
     max_logit = max(logits)
@@ -66,7 +64,7 @@ def _sample_without_replacement(weights, count, rng):
     return chosen
 
 
-def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_noroc: bool = True):
+def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1):
     rng = rng or random.SystemRandom()
     if len(draws) < 2:
         return []
@@ -78,15 +76,13 @@ def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_nor
     main_targets = []
 
     for prev, nxt in zip(draws[:-1], draws[1:]):
-        prev_main, _prev_noroc = prev
-        x = _one_hot([n - 1 for n in prev_main], 49)
+        x = _one_hot([n - 1 for n in prev], 49)
         inputs.append(x)
-        main_targets.append(_one_hot([n - 1 for n in nxt[0]], 49, value=1.0 / 6.0))
+        main_targets.append(_one_hot([n - 1 for n in nxt], 49, value=1.0 / 6.0))
 
     main_model.train(inputs, main_targets, epochs=epochs, lr=lr)
 
-    last_main, _last_noroc = draws[-1]
-    last_x = _one_hot([n - 1 for n in last_main], 49)
+    last_x = _one_hot([n - 1 for n in draws[-1]], 49)
     main_probs = main_model.predict_probs(last_x)
 
     lines = []
@@ -94,11 +90,10 @@ def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_nor
     while len(lines) < count:
         main_idxs = _sample_without_replacement(main_probs, 6, rng)
         main = sorted([i + 1 for i in main_idxs])
-        noroc = rng.randint(0, NOROC_MAX) if include_noroc else None
-        key = tuple(main) if noroc is None else tuple(main) + (noroc,)
+        key = tuple(main)
         if key in seen:
             continue
         seen.add(key)
-        lines.append((main, noroc))
+        lines.append(main)
 
     return lines

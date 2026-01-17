@@ -1,8 +1,6 @@
 import math
 import random
 
-from .strategies import SUPER_NOROC_MAX
-
 
 def _softmax(logits):
     max_logit = max(logits)
@@ -66,7 +64,7 @@ def _sample_without_replacement(weights, count, rng):
     return chosen
 
 
-def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_super_noroc: bool = True):
+def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1):
     """Generate neural network-based Loto 5/40 picks.
 
     Uses historical draws to train a model, then samples 5 numbers from 1-40.
@@ -82,16 +80,14 @@ def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_sup
     main_targets = []
 
     for prev, nxt in zip(draws[:-1], draws[1:]):
-        prev_main, _prev_super_noroc = prev
-        x = _one_hot([n - 1 for n in prev_main], 40)
+        x = _one_hot([n - 1 for n in prev], 40)
         inputs.append(x)
         # Target is the 6 drawn numbers from next draw
-        main_targets.append(_one_hot([n - 1 for n in nxt[0]], 40, value=1.0 / 6.0))
+        main_targets.append(_one_hot([n - 1 for n in nxt], 40, value=1.0 / 6.0))
 
     main_model.train(inputs, main_targets, epochs=epochs, lr=lr)
 
-    last_main, _last_super_noroc = draws[-1]
-    last_x = _one_hot([n - 1 for n in last_main], 40)
+    last_x = _one_hot([n - 1 for n in draws[-1]], 40)
     main_probs = main_model.predict_probs(last_x)
 
     lines = []
@@ -99,11 +95,10 @@ def generate_neural_lines(draws, count, rng=None, epochs=10, lr=0.1, include_sup
     while len(lines) < count:
         main_idxs = _sample_without_replacement(main_probs, 5, rng)  # Pick 5 numbers
         main = sorted([i + 1 for i in main_idxs])
-        super_noroc = rng.randint(0, SUPER_NOROC_MAX) if include_super_noroc else None
-        key = tuple(main) if super_noroc is None else tuple(main) + (super_noroc,)
+        key = tuple(main)
         if key in seen:
             continue
         seen.add(key)
-        lines.append((main, super_noroc))
+        lines.append(main)
 
     return lines
