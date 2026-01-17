@@ -5,6 +5,22 @@ on:
     # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
     - cron: '0 10 * * 0,4'
   workflow_dispatch:
+    inputs:
+      joker_lines:
+        description: 'Number of Joker lines to generate'
+        required: false
+        default: '7'
+        type: string
+      loto649_lines:
+        description: 'Number of Loto 6/49 lines to generate'
+        required: false
+        default: '0'
+        type: string
+      loto540_lines:
+        description: 'Number of Loto 5/40 lines to generate'
+        required: false
+        default: '0'
+        type: string
 
 permissions:
   actions: write
@@ -26,39 +42,73 @@ jobs:
       - name: Backfill latest historical draws
         run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
 
+      - name: Resolve line counts
+        id: counts
+        run: |
+          normalize() {
+            local input="$1"
+            local fallback="$2"
+            if [ -z "$input" ]; then
+              echo "$fallback"
+              return
+            fi
+            if ! [[ "$input" =~ ^[0-9]+$ ]]; then
+              echo "$fallback"
+              return
+            fi
+            echo "$input"
+          }
+
+          joker=$(normalize "${{ github.event.inputs.joker_lines }}" "7")
+          loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "0")
+          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "0")
+
+          echo "joker_lines=$joker" >> "$GITHUB_OUTPUT"
+          echo "loto649_lines=$loto649" >> "$GITHUB_OUTPUT"
+          echo "loto540_lines=$loto540" >> "$GITHUB_OUTPUT"
+
       - name: Generate Joker picks
+        if: ${{ steps.counts.outputs.joker_lines != '0' }}
         id: joker
         run: |
           {
             echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n 3 --seed ${{ github.run_id }}
+            PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n ${{ steps.counts.outputs.joker_lines }} --seed ${{ github.run_id }}
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
       - name: Generate Loto 6/49 picks
+        if: ${{ steps.counts.outputs.loto649_lines != '0' }}
         id: loto649
         run: |
           {
             echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_loto_649_picks.py -s smart -n 3 --seed ${{ github.run_id }}
+            PYTHONPATH=src python scripts/generate_loto_649_picks.py -s smart -n ${{ steps.counts.outputs.loto649_lines }} --seed ${{ github.run_id }}
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
       - name: Generate Loto 5/40 picks
+        if: ${{ steps.counts.outputs.loto540_lines != '0' }}
         id: loto540
         run: |
           {
             echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_loto_540_picks.py -s smart -n 3 --seed ${{ github.run_id }}
+            PYTHONPATH=src python scripts/generate_loto_540_picks.py -s smart -n ${{ steps.counts.outputs.loto540_lines }} --seed ${{ github.run_id }}
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
       - name: Save picks for later comparison
         run: |
           mkdir -p picks
-          echo "${{ steps.joker.outputs.PICKS }}" > picks/joker.txt
-          echo "${{ steps.loto649.outputs.PICKS }}" > picks/loto649.txt
-          echo "${{ steps.loto540.outputs.PICKS }}" > picks/loto540.txt
+          if [ -n "${{ steps.joker.outputs.PICKS }}" ]; then
+            echo "${{ steps.joker.outputs.PICKS }}" > picks/joker.txt
+          fi
+          if [ -n "${{ steps.loto649.outputs.PICKS }}" ]; then
+            echo "${{ steps.loto649.outputs.PICKS }}" > picks/loto649.txt
+          fi
+          if [ -n "${{ steps.loto540.outputs.PICKS }}" ]; then
+            echo "${{ steps.loto540.outputs.PICKS }}" > picks/loto540.txt
+          fi
           date +"%Y-%m-%d" > picks/date.txt
 
       - name: Upload picks artifact
@@ -74,25 +124,25 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           DATE=$(date +"%Y-%m-%d")
-          MESSAGE="🎰 *Lottery Picks - ${DATE}*
+          MESSAGE="🎰 *Lottery Picks - ${DATE}*"
 
-          🃏 *JOKER*
-          \`\`\`
-          ${{ steps.joker.outputs.PICKS }}
-          \`\`\`
+          if [ -n "${{ steps.joker.outputs.PICKS }}" ]; then
+            MESSAGE="${MESSAGE}"$'\n\n'"🃏 *JOKER*"$'\n```'"$'\n'"${{ steps.joker.outputs.PICKS }}"$'\n```'
+          fi
 
-          🎱 *LOTO 6/49*
-          \`\`\`
-          ${{ steps.loto649.outputs.PICKS }}
-          \`\`\`
+          if [ -n "${{ steps.loto649.outputs.PICKS }}" ]; then
+            MESSAGE="${MESSAGE}"$'\n\n'"🎱 *LOTO 6/49*"$'\n```'"$'\n'"${{ steps.loto649.outputs.PICKS }}"$'\n```'
+          fi
 
-          🎯 *LOTO 5/40*
-          \`\`\`
-          ${{ steps.loto540.outputs.PICKS }}
-          \`\`\`
+          if [ -n "${{ steps.loto540.outputs.PICKS }}" ]; then
+            MESSAGE="${MESSAGE}"$'\n\n'"🎯 *LOTO 5/40*"$'\n```'"$'\n'"${{ steps.loto540.outputs.PICKS }}"$'\n```'
+          fi
 
-          _Generated with smart strategy_
-          _Results will be checked tomorrow morning_"
+          if [ -z "${{ steps.joker.outputs.PICKS }}${{ steps.loto649.outputs.PICKS }}${{ steps.loto540.outputs.PICKS }}" ]; then
+            MESSAGE="${MESSAGE}"$'\n\n'"_No picks generated (all line counts set to 0)._"
+          fi
+
+          MESSAGE="${MESSAGE}"$'\n\n'"_Generated with smart strategy_"$'\n'"_Results will be checked tomorrow morning_"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
