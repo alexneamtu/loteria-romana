@@ -14,11 +14,11 @@ from .features import (
     extract_all_features,
     get_overdue_numbers,
     get_hot_numbers,
-    compute_gap_distribution,
+    compute_weighted_gap_averages,
     compute_position_frequency,
 )
 from .game_strategies import _sample_weighted
-from .recency import DEFAULT_HALF_LIFE, draw_weights
+from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE, draw_weights
 
 
 def compute_composite_scores(
@@ -26,6 +26,8 @@ def compute_composite_scores(
     draws: list[list[int]],
     weights: dict[str, float] | None = None,
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> dict[int, float]:
     """Compute composite probability scores for each number.
 
@@ -40,7 +42,9 @@ def compute_composite_scores(
         config: Game configuration
         draws: Historical draws
         weights: Optional weights for each factor
-        half_life: Recency half-life in draws
+        half_life: Recency half-life value (draws or days)
+        draw_dates: Optional ISO date strings aligned to draws
+        half_life_mode: "draws" or "days" for recency decay
 
     Returns:
         Dict mapping number -> composite score (higher = more likely)
@@ -61,7 +65,12 @@ def compute_composite_scores(
     pool_size = config.pool_size
     scores = {n: 0.0 for n in config.pool_range}
 
-    weights_by_draw = draw_weights(len(draws), half_life)
+    weights_by_draw = draw_weights(
+        len(draws),
+        half_life,
+        draw_dates=draw_dates,
+        mode=half_life_mode,
+    )
 
     # 1. Frequency score (how often each number appears)
     freq = Counter()
@@ -87,12 +96,16 @@ def compute_composite_scores(
             scores[num] += weights["recency"] * (recency_score[num] / max_recency)
 
     # 3. Gap score (overdue numbers get bonus)
-    gaps = compute_gap_distribution(draws, pool_size)
+    gap_averages = compute_weighted_gap_averages(
+        draws,
+        pool_size,
+        weights=weights_by_draw,
+    )
     expected_gap = pool_size / config.numbers_drawn
 
     for num in config.pool_range:
-        if num in gaps and gaps[num]:
-            avg_gap = sum(gaps[num]) / len(gaps[num])
+        avg_gap = gap_averages.get(num, 0.0)
+        if avg_gap > 0:
             # Numbers with longer-than-expected gaps get higher scores
             gap_ratio = avg_gap / expected_gap if expected_gap > 0 else 1
             scores[num] += weights["gap"] * min(gap_ratio, 2.0) / 2.0
@@ -109,25 +122,33 @@ def compute_composite_scores(
 
     # 5. Trend score (is frequency increasing or decreasing?)
     if len(draws) >= 20:
-        first_half = draws[:len(draws)//2]
-        second_half = draws[len(draws)//2:]
+        midpoint = len(draws) // 2
+        first_half = draws[:midpoint]
+        second_half = draws[midpoint:]
+        first_weights = weights_by_draw[:midpoint]
+        second_weights = weights_by_draw[midpoint:]
 
         freq_first = Counter()
         freq_second = Counter()
 
-        for main in first_half:
+        for main, weight in zip(first_half, first_weights):
             for num in main:
-                freq_first[num] += 1
-        for main in second_half:
+                freq_first[num] += weight
+        for main, weight in zip(second_half, second_weights):
             for num in main:
-                freq_second[num] += 1
+                freq_second[num] += weight
 
-        for num in config.pool_range:
-            f1 = freq_first.get(num, 0) / (len(first_half) * config.numbers_drawn)
-            f2 = freq_second.get(num, 0) / (len(second_half) * config.numbers_drawn)
-            # Positive trend = increasing frequency
-            trend = f2 - f1
-            scores[num] += weights["trend"] * (0.5 + trend)  # Center at 0.5
+        total_first = sum(first_weights)
+        total_second = sum(second_weights)
+        if total_first > 0 and total_second > 0:
+            denom_first = total_first * config.numbers_drawn
+            denom_second = total_second * config.numbers_drawn
+            for num in config.pool_range:
+                f1 = freq_first.get(num, 0) / denom_first
+                f2 = freq_second.get(num, 0) / denom_second
+                # Positive trend = increasing frequency
+                trend = f2 - f1
+                scores[num] += weights["trend"] * (0.5 + trend)  # Center at 0.5
 
     # 6. Balance score (maintain odd/even, high/low balance)
     midpoint = config.pool_min + pool_size // 2
@@ -163,6 +184,8 @@ def generate_optimal_picks(
     rng: random.Random | None = None,
     strategy: Literal["balanced", "aggressive", "conservative"] = "balanced",
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> list[list[int]]:
     """Generate optimized lottery picks using composite scoring.
 
@@ -203,7 +226,14 @@ def generate_optimal_picks(
     else:  # balanced
         weights = None  # Use defaults
 
-    scores = compute_composite_scores(config, draws, weights, half_life=half_life)
+    scores = compute_composite_scores(
+        config,
+        draws,
+        weights,
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
 
     # Convert to lists for sampling
     numbers = list(config.pool_range)
@@ -233,6 +263,8 @@ def generate_coverage_picks(
     count: int,
     rng: random.Random | None = None,
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> list[list[int]]:
     """Generate picks that maximize number coverage.
 
@@ -250,7 +282,13 @@ def generate_coverage_picks(
     """
     rng = rng or random.SystemRandom()
 
-    scores = compute_composite_scores(config, draws, half_life=half_life)
+    scores = compute_composite_scores(
+        config,
+        draws,
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
     numbers = list(config.pool_range)
     probs = [scores[n] for n in numbers]
 
@@ -284,6 +322,8 @@ def generate_pattern_picks(
     count: int,
     rng: random.Random | None = None,
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> list[list[int]]:
     """Generate picks that match historical patterns.
 
@@ -331,7 +371,13 @@ def generate_pattern_picks(
     target_high = round(avg_high)
 
     # Generate picks matching patterns
-    scores = compute_composite_scores(config, draws, half_life=half_life)
+    scores = compute_composite_scores(
+        config,
+        draws,
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
     numbers = list(config.pool_range)
     probs = [scores[n] for n in numbers]
 
@@ -376,6 +422,8 @@ def generate_smart_picks(
     count: int,
     rng: random.Random | None = None,
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> list[list[int]]:
     """Generate the smartest possible picks using all available techniques.
 
@@ -401,9 +449,34 @@ def generate_smart_picks(
         return generate_random_picks(config, count, rng)
 
     # Get different strategy suggestions
-    optimal = generate_optimal_picks(config, draws, count, rng, "balanced", half_life=half_life)
-    coverage = generate_coverage_picks(config, draws, count, rng, half_life=half_life)
-    pattern = generate_pattern_picks(config, draws, count, rng, half_life=half_life)
+    optimal = generate_optimal_picks(
+        config,
+        draws,
+        count,
+        rng,
+        "balanced",
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
+    coverage = generate_coverage_picks(
+        config,
+        draws,
+        count,
+        rng,
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
+    pattern = generate_pattern_picks(
+        config,
+        draws,
+        count,
+        rng,
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
 
     # Combine: take best from each
     all_picks = []

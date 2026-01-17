@@ -159,7 +159,11 @@ class MLPModel:
         return current
 
     def train_step(
-        self, inputs: list[float], targets: list[float], learning_rate: float
+        self,
+        inputs: list[float],
+        targets: list[float],
+        learning_rate: float,
+        sample_weight: float = 1.0,
     ) -> float:
         """Single training step with backpropagation.
 
@@ -175,21 +179,21 @@ class MLPModel:
         predictions = self.forward(inputs)
 
         # Compute loss (cross-entropy for softmax output)
-        loss = cross_entropy(predictions, targets)
+        loss = cross_entropy(predictions, targets) * sample_weight
 
         # Add L2 regularization to loss
         for layer in self.layers:
-            loss += l2_regularization(layer.weights, self.l2_lambda)
+            loss += l2_regularization(layer.weights, self.l2_lambda) * sample_weight
 
         # Backward pass (for softmax + cross-entropy, gradient is pred - target)
-        grad = vector_subtract(predictions, targets)
+        grad = vector_scale(vector_subtract(predictions, targets), sample_weight)
 
         # Apply L2 regularization gradient and propagate
         for layer in reversed(self.layers):
             # Add L2 gradient to weights
             for i in range(layer.output_size):
                 for j in range(layer.input_size):
-                    grad_reg = self.l2_lambda * layer.weights[i][j]
+                    grad_reg = self.l2_lambda * layer.weights[i][j] * sample_weight
                     layer.weights[i][j] -= learning_rate * grad_reg
 
             grad = layer.backward(grad, learning_rate)
@@ -202,6 +206,7 @@ class MLPModel:
         targets_list: list[list[float]],
         epochs: int = 100,
         learning_rate: float = 0.01,
+        sample_weights: list[float] | None = None,
     ) -> list[float]:
         """Train the network.
 
@@ -224,12 +229,17 @@ class MLPModel:
             self.rng.shuffle(indices)
 
             for idx in indices:
+                weight = sample_weights[idx] if sample_weights is not None else 1.0
                 loss = self.train_step(
-                    inputs_list[idx], targets_list[idx], learning_rate
+                    inputs_list[idx],
+                    targets_list[idx],
+                    learning_rate,
+                    sample_weight=weight,
                 )
                 epoch_loss += loss
 
-            avg_loss = epoch_loss / len(inputs_list) if inputs_list else 0.0
+            total_weight = sum(sample_weights) if sample_weights else len(inputs_list)
+            avg_loss = epoch_loss / total_weight if total_weight else 0.0
             losses.append(avg_loss)
 
         return losses
@@ -392,6 +402,7 @@ class LSTMModel:
         targets: list[list[float]],
         epochs: int = 100,
         learning_rate: float = 0.01,
+        sample_weights: list[float] | None = None,
     ) -> list[float]:
         """Train LSTM with truncated backpropagation through time.
 
@@ -417,19 +428,21 @@ class LSTMModel:
             for idx in indices:
                 seq = sequences[idx]
                 target = targets[idx]
+                weight = sample_weights[idx] if sample_weights is not None else 1.0
 
                 # Forward pass
                 pred = self.forward_sequence(seq)
 
                 # Compute loss
-                loss = cross_entropy(pred, target)
+                loss = cross_entropy(pred, target) * weight
                 epoch_loss += loss
 
                 # Simplified backprop: only update output layer
-                grad = vector_subtract(pred, target)
+                grad = vector_scale(vector_subtract(pred, target), weight)
                 self.output_layer.backward(grad, learning_rate)
 
-            avg_loss = epoch_loss / len(sequences) if sequences else 0.0
+            total_weight = sum(sample_weights) if sample_weights else len(sequences)
+            avg_loss = epoch_loss / total_weight if total_weight else 0.0
             losses.append(avg_loss)
 
         return losses

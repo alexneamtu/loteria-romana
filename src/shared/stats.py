@@ -6,7 +6,7 @@ from itertools import combinations
 from dataclasses import dataclass
 
 from .math_utils import mean, std_dev
-from .recency import DEFAULT_HALF_LIFE, draw_weights
+from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE, draw_weights
 
 
 def compute_deltas(sorted_numbers: list[int]) -> list[int]:
@@ -59,20 +59,33 @@ class DeltaStrategy:
         numbers_to_pick: int,
         secondary_pool: int = 20,
         half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
         self.half_life = half_life
+        self.half_life_mode = half_life_mode
         self.name = "delta"
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
         """Get probability distribution based on delta analysis."""
         if not draws:
             return [1.0 / self.number_pool] * self.number_pool
 
         # Convert to number probabilities based on delta patterns
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         probs = [0.0] * self.number_pool
         for n in range(self.number_pool):
             # Score based on how often this number appears at valid delta positions
@@ -90,9 +103,17 @@ class DeltaStrategy:
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines using sampled deltas from historical distribution."""
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         delta_dist = build_delta_distribution(draws, weights=weights)
 
         if not delta_dist:
@@ -164,22 +185,33 @@ class HotColdStrategy:
         numbers_to_pick: int,
         secondary_pool: int = 20,
         half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
         self.half_life = half_life
+        self.half_life_mode = half_life_mode
         self.name = "hotcold"
 
     def compute_heat_scores(
-        self, draws: list[list[int]]
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> dict[int, float]:
         """Compute time-weighted frequency scores.
 
         More recent draws have higher weight (exponential decay).
         """
         scores = {n: 0.0 for n in range(1, self.number_pool + 1)}
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         for main, weight in zip(draws, weights):
             for n in main:
                 scores[n] += weight
@@ -208,9 +240,18 @@ class HotColdStrategy:
 
         return hot, cold, neutral
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
         """Get probability distribution based on heat scores."""
-        scores = self.compute_heat_scores(draws)
+        scores = self.compute_heat_scores(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
         total = sum(scores.values()) or 1.0
         return [scores.get(n, 0) / total for n in range(1, self.number_pool + 1)]
 
@@ -221,9 +262,15 @@ class HotColdStrategy:
         rng: random.Random,
         hot_ratio: float = 0.4,
         cold_ratio: float = 0.2,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines with specified hot/cold/neutral mix."""
-        scores = self.compute_heat_scores(draws)
+        scores = self.compute_heat_scores(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
         hot, cold, neutral = self.classify_numbers(scores)
 
         # Calculate target counts
@@ -283,11 +330,13 @@ class PairStrategy:
         numbers_to_pick: int,
         secondary_pool: int = 20,
         half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
         self.half_life = half_life
+        self.half_life_mode = half_life_mode
         self.name = "pairs"
 
     def build_pair_matrix(
@@ -311,9 +360,20 @@ class PairStrategy:
         sorted_pairs = sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)
         return [pair for pair, _ in sorted_pairs[:top_n]]
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
         """Get probability distribution based on pair frequency."""
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         pair_counts = self.build_pair_matrix(draws, weights=weights)
 
         # Score each number by how often it appears in strong pairs
@@ -330,9 +390,17 @@ class PairStrategy:
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines favoring strong pairs."""
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         pair_counts = self.build_pair_matrix(draws, weights=weights)
 
         if not pair_counts:
@@ -398,11 +466,13 @@ class SkipGapStrategy:
         numbers_to_pick: int,
         secondary_pool: int = 20,
         half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
         self.half_life = half_life
+        self.half_life_mode = half_life_mode
         self.name = "skip"
 
     def compute_gaps(self, draws: list[list[int]]) -> dict[int, int]:
@@ -417,13 +487,22 @@ class SkipGapStrategy:
         return gaps
 
     def compute_expected_gaps(
-        self, draws: list[list[int]]
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> dict[int, float]:
         """Compute average gap for each number historically."""
         gap_totals: dict[int, float] = {n: 0.0 for n in range(1, self.number_pool + 1)}
         weight_totals: dict[int, float] = {n: 0.0 for n in range(1, self.number_pool + 1)}
         last_seen: dict[int, int] = {n: -1 for n in range(1, self.number_pool + 1)}
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
 
         for idx, main in enumerate(draws):
             weight = weights[idx] if idx < len(weights) else 1.0
@@ -442,10 +521,19 @@ class SkipGapStrategy:
             for n in range(1, self.number_pool + 1)
         }
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
         """Get probability distribution based on overdue scores."""
         current_gaps = self.compute_gaps(draws)
-        expected_gaps = self.compute_expected_gaps(draws)
+        expected_gaps = self.compute_expected_gaps(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
 
         # Score: how overdue is each number
         overdue_scores = {
@@ -464,10 +552,16 @@ class SkipGapStrategy:
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines favoring overdue numbers."""
         current_gaps = self.compute_gaps(draws)
-        expected_gaps = self.compute_expected_gaps(draws)
+        expected_gaps = self.compute_expected_gaps(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
 
         # Score: how overdue is each number
         overdue_scores = {
@@ -531,15 +625,20 @@ class SumConstraintStrategy:
         numbers_to_pick: int,
         secondary_pool: int = 20,
         half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
         self.secondary_pool = secondary_pool
         self.half_life = half_life
+        self.half_life_mode = half_life_mode
         self.name = "sum"
 
     def compute_sum_distribution(
-        self, draws: list[list[int]]
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> tuple[float, float]:
         """Compute mean and std of historical sums."""
         sums = [sum(main) for main in draws]
@@ -549,7 +648,13 @@ class SumConstraintStrategy:
             expected = self.numbers_to_pick * (1 + self.number_pool) / 2
             return expected, expected * 0.15
 
-        weights = draw_weights(len(sums), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(sums),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         total_weight = sum(weights)
         if total_weight <= 0:
             m = mean(sums)
@@ -577,9 +682,15 @@ class SumConstraintStrategy:
         count: int,
         rng: random.Random,
         sigma_range: float = 1.5,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines with sums within sigma_range of historical mean."""
-        mean_sum, std_sum = self.compute_sum_distribution(draws)
+        mean_sum, std_sum = self.compute_sum_distribution(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
         min_sum = mean_sum - sigma_range * std_sum
         max_sum = mean_sum + sigma_range * std_sum
 
@@ -703,6 +814,7 @@ class BalanceStrategy:
         numbers_to_pick: int,
         secondary_pool: int = 20,
         half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
         self.number_pool = number_pool
         self.numbers_to_pick = numbers_to_pick
@@ -710,12 +822,22 @@ class BalanceStrategy:
         self.name = "balance"
         self.midpoint = (number_pool + 1) // 2
         self.half_life = half_life
+        self.half_life_mode = half_life_mode
 
     def compute_target_ratios(
-        self, draws: list[list[int]]
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> tuple[dict[int, float], dict[int, float]]:
         """Compute probability distributions for odd/even and high/low counts."""
-        weights = draw_weights(len(draws), self.half_life)
+        mode = half_life_mode or self.half_life_mode
+        weights = draw_weights(
+            len(draws),
+            self.half_life,
+            draw_dates=draw_dates,
+            mode=mode,
+        )
         odd_dist = compute_odd_even_distribution(draws, weights=weights)
         high_dist = compute_high_low_distribution(draws, self.midpoint, weights=weights)
 
@@ -736,9 +858,15 @@ class BalanceStrategy:
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines matching historical balance distributions."""
-        odd_probs, high_probs = self.compute_target_ratios(draws)
+        odd_probs, high_probs = self.compute_target_ratios(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
 
         if not odd_probs:
             # Default to balanced distribution

@@ -1,6 +1,6 @@
 import random
 
-from shared.recency import DEFAULT_HALF_LIFE, draw_weights
+from shared.recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE, draw_weights
 
 
 def _sample_weighted(numbers, weights, count, rng):
@@ -31,12 +31,22 @@ def generate_random_lines(count: int, rng=None):
     return lines
 
 
-def build_frequency(draws, half_life: float = DEFAULT_HALF_LIFE):
+def build_frequency(
+    draws,
+    half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
+):
     freq = {n: 0.0 for n in range(1, 46)}
     if not draws:
         return freq
 
-    weights = draw_weights(len(draws), half_life)
+    weights = draw_weights(
+        len(draws),
+        half_life,
+        draw_dates=draw_dates,
+        mode=half_life_mode,
+    )
     for (main, _), weight in zip(draws, weights):
         for n in main:
             freq[n] += weight

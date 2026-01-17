@@ -8,7 +8,7 @@ import random
 from typing import Protocol
 
 from .game_config import GameConfig
-from .recency import DEFAULT_HALF_LIFE, draw_weights
+from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE, draw_weights
 
 
 class StrategyProtocol(Protocol):
@@ -83,6 +83,8 @@ def build_frequency(
     config: GameConfig,
     draws: list[list[int]],
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> dict[int, float]:
     """Build frequency map from historical draws.
 
@@ -97,7 +99,12 @@ def build_frequency(
     if not draws:
         return freq
 
-    weights = draw_weights(len(draws), half_life)
+    weights = draw_weights(
+        len(draws),
+        half_life,
+        draw_dates=draw_dates,
+        mode=half_life_mode,
+    )
     for main, weight in zip(draws, weights):
         for n in main:
             if n in freq:
@@ -111,6 +118,8 @@ def generate_frequency_picks(
     count: int,
     rng: random.Random | None = None,
     half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> list[list[int]]:
     """Generate frequency-weighted lottery picks.
 
@@ -127,7 +136,13 @@ def generate_frequency_picks(
         List of picks, each pick is a sorted list of numbers
     """
     rng = rng or random.SystemRandom()
-    freq = build_frequency(config, draws, half_life=half_life)
+    freq = build_frequency(
+        config,
+        draws,
+        half_life=half_life,
+        draw_dates=draw_dates,
+        half_life_mode=half_life_mode,
+    )
     numbers = list(config.pool_range)
     weights = [freq.get(n, 0) + 1 for n in numbers]  # +1 smoothing
 

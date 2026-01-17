@@ -16,12 +16,16 @@ class Strategy(Protocol):
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         ...
 
     def get_probabilities(
         self,
         draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[float]:
         ...
 
@@ -93,6 +97,8 @@ class EnsembleVoter:
     def combine_probabilities(
         self,
         draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[float]:
         """Combine probability distributions from all strategies.
 
@@ -105,7 +111,11 @@ class EnsembleVoter:
             if weight <= 0:
                 continue
 
-            probs = strategy.get_probabilities(draws)
+            probs = strategy.get_probabilities(
+                draws,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
             for i, p in enumerate(probs):
                 combined[i] += weight * p
 
@@ -121,15 +131,23 @@ class EnsembleVoter:
     def get_probabilities(
         self,
         draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[float]:
         """Alias for combine_probabilities for protocol compatibility."""
-        return self.combine_probabilities(draws)
+        return self.combine_probabilities(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
 
     def generate(
         self,
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate lines using weighted strategy voting.
 
@@ -142,7 +160,11 @@ class EnsembleVoter:
 
         # Method 1: Generate some lines from combined probabilities
         combined_count = count // 2
-        combined_probs = self.combine_probabilities(draws)
+        combined_probs = self.combine_probabilities(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
         numbers = list(range(1, self.number_pool + 1))
 
         for _ in range(combined_count * 10):
@@ -158,7 +180,14 @@ class EnsembleVoter:
         # Method 2: Collect lines from individual strategies
         remaining = count - len(lines)
         if remaining > 0:
-            strategy_lines = self._collect_strategy_lines(draws, remaining, rng, seen)
+            strategy_lines = self._collect_strategy_lines(
+                draws,
+                remaining,
+                rng,
+                seen,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
             lines.extend(strategy_lines)
 
         return lines[:count]
@@ -200,6 +229,8 @@ class EnsembleVoter:
         count: int,
         rng: random.Random,
         seen: set,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Collect lines from individual strategies proportional to weights."""
         lines = []
@@ -232,7 +263,13 @@ class EnsembleVoter:
             if n <= 0:
                 continue
 
-            strategy_lines = strategy.generate(draws, n * 2, rng)
+            strategy_lines = strategy.generate(
+                draws,
+                n * 2,
+                rng,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
             for main in strategy_lines:
                 key = tuple(main)
                 if key not in seen:
@@ -251,6 +288,8 @@ class EnsembleVoter:
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate diverse lines by ensuring representation from all strategies.
 
@@ -262,7 +301,13 @@ class EnsembleVoter:
 
         # First, get at least one line from each strategy
         for strategy in self.strategies:
-            strategy_lines = strategy.generate(draws, 3, rng)
+            strategy_lines = strategy.generate(
+                draws,
+                3,
+                rng,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
             for main in strategy_lines:
                 key = tuple(main)
                 if key not in seen:
@@ -273,7 +318,13 @@ class EnsembleVoter:
         # Fill remaining with weighted generation
         remaining = count - len(lines)
         if remaining > 0:
-            additional = self.generate(draws, remaining * 2, rng)
+            additional = self.generate(
+                draws,
+                remaining * 2,
+                rng,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
             for main in additional:
                 key = tuple(main)
                 if key not in seen:
@@ -314,6 +365,8 @@ class StrategySelector:
         draws: list[list[int]],
         n_eval: int = 20,
         rng: random.Random | None = None,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> float:
         """Evaluate strategy on recent draws.
 
@@ -331,7 +384,13 @@ class StrategySelector:
             training = draws[:i]
             actual_main = draws[i]
 
-            tickets = strategy.generate(training, 1, rng)
+            tickets = strategy.generate(
+                training,
+                1,
+                rng,
+                draw_dates=draw_dates[:i] if draw_dates else None,
+                half_life_mode=half_life_mode,
+            )
             for main in tickets:
                 matches = len(set(main) & set(actual_main))
                 total_matches += matches
@@ -343,13 +402,21 @@ class StrategySelector:
         self,
         draws: list[list[int]],
         rng: random.Random | None = None,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> Strategy:
         """Select the best performing strategy."""
         rng = rng or random.Random()
 
         scores = {}
         for strategy in self.strategies:
-            score = self.evaluate_strategy(strategy, draws, rng=rng)
+            score = self.evaluate_strategy(
+                strategy,
+                draws,
+                rng=rng,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
             scores[strategy.name] = score
             self.recent_performance[strategy.name].append(score)
 
@@ -363,17 +430,40 @@ class StrategySelector:
     def get_probabilities(
         self,
         draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[float]:
         """Get probabilities from the best strategy."""
-        best = self.select_best(draws)
-        return best.get_probabilities(draws)
+        best = self.select_best(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
+        return best.get_probabilities(
+            draws,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
 
     def generate(
         self,
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
         """Generate using the best strategy."""
-        best = self.select_best(draws, rng)
-        return best.generate(draws, count, rng)
+        best = self.select_best(
+            draws,
+            rng,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
+        return best.generate(
+            draws,
+            count,
+            rng,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )

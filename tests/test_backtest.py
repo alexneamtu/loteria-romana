@@ -3,6 +3,7 @@ import random
 from unittest.mock import patch
 
 from joker_model.backtest import pick_best_strategy
+from shared.recency import DEFAULT_HALF_LIFE_MODE
 
 
 class TestBacktest(unittest.TestCase):
@@ -27,6 +28,8 @@ class TestBacktest(unittest.TestCase):
             self.assertGreaterEqual(build_frequency.call_count, 1)
             self.assertEqual(build_frequency.call_args_list[0][0][0], [])
             self.assertEqual(build_frequency.call_args_list[1][0][0], draws[:1])
+            for call in build_frequency.call_args_list:
+                self.assertEqual(call.kwargs.get("half_life_mode"), DEFAULT_HALF_LIFE_MODE)
 
 
 if __name__ == "__main__":
