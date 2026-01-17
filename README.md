@@ -9,6 +9,19 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 - It does not improve expected value; lottery outcomes remain random.
 - It is not a predictor and not financial advice.
 
+## Documentation
+
+For comprehensive documentation on lottery prediction methods, statistical analysis, and implementation details, see the [docs/](docs/README.md) directory:
+
+- [Introduction to Lottery Prediction](docs/01-introduction.md) - Odds, expected value, and fundamentals
+- [Statistical Methods](docs/02-statistical-methods.md) - Classical approaches and their limitations
+- [Machine Learning Methods](docs/03-machine-learning-methods.md) - Neural networks and why they don't work
+- [Wheeling Systems](docs/04-wheeling-systems.md) - The only mathematically guaranteed approach
+- [Loto.ro Specific Analysis](docs/05-loto-ro-specific.md) - Romanian lottery rules and data
+- [Implementation Guide](docs/06-implementation-guide.md) - How to use this codebase
+- [Backtesting Results](docs/07-backtesting-results.md) - Strategy comparison data
+- [Honest Assessment](docs/08-honest-assessment.md) - Limitations and realistic expectations
+
 ## Scope
 
 - Target games:

@@ -339,3 +339,287 @@ class CrossValidator:
         mean = sum(values) / len(values)
         variance = sum((x - mean) ** 2 for x in values) / len(values)
         return math.sqrt(variance)
+
+
+def strategy_significance_test(
+    strategy_result: BacktestResult,
+    baseline_win_rate: float,
+) -> dict:
+    """Test if a strategy is significantly different from baseline.
+
+    Uses binomial test approximation to determine if the observed
+    win rate is significantly different from the expected baseline.
+
+    Args:
+        strategy_result: Result from backtesting
+        baseline_win_rate: Expected win rate under random selection
+
+    Returns:
+        Dict with test statistics and conclusion
+    """
+    n = strategy_result.total_tickets
+    k = strategy_result.total_wins
+    p0 = baseline_win_rate
+
+    if n == 0:
+        return {"error": "No tickets to analyze"}
+
+    # Observed proportion
+    p_hat = k / n
+
+    # Standard error under null hypothesis
+    se = math.sqrt(p0 * (1 - p0) / n)
+
+    # Z-statistic
+    if se > 0:
+        z = (p_hat - p0) / se
+    else:
+        z = 0.0
+
+    # Two-tailed p-value (approximate using normal)
+    p_value = 2 * (1 - _normal_cdf(abs(z)))
+
+    return {
+        "observed_rate": p_hat,
+        "baseline_rate": p0,
+        "z_statistic": z,
+        "p_value": p_value,
+        "is_significant": p_value < 0.05,
+        "conclusion": (
+            "Strategy shows significant difference from baseline"
+            if p_value < 0.05
+            else "No significant difference from random selection"
+        ),
+    }
+
+
+def _normal_cdf(z: float) -> float:
+    """Approximate standard normal CDF."""
+    return 0.5 * (1 + _erf(z / math.sqrt(2)))
+
+
+def _erf(x: float) -> float:
+    """Approximate error function."""
+    sign = 1 if x >= 0 else -1
+    x = abs(x)
+
+    a1 = 0.254829592
+    a2 = -0.284496736
+    a3 = 1.421413741
+    a4 = -1.453152027
+    a5 = 1.061405429
+    p = 0.3275911
+
+    t = 1.0 / (1.0 + p * x)
+    y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * math.exp(-x * x)
+
+    return sign * y
+
+
+def compare_strategies(results: list[BacktestResult]) -> dict:
+    """Compare multiple strategies statistically.
+
+    Tests whether any strategy is significantly better than others.
+
+    Args:
+        results: List of backtest results for different strategies
+
+    Returns:
+        Dict with comparison statistics
+    """
+    if len(results) < 2:
+        return {"error": "Need at least 2 strategies to compare"}
+
+    # Calculate win rates
+    win_rates = [(r.strategy_name, r.win_rate) for r in results]
+    sorted_rates = sorted(win_rates, key=lambda x: x[1], reverse=True)
+
+    # Best vs worst
+    best_name, best_rate = sorted_rates[0]
+    worst_name, worst_rate = sorted_rates[-1]
+
+    # Chi-square test for homogeneity
+    total_tickets = sum(r.total_tickets for r in results)
+    total_wins = sum(r.total_wins for r in results)
+
+    if total_tickets == 0:
+        return {"error": "No tickets to analyze"}
+
+    pooled_rate = total_wins / total_tickets
+
+    chi_sq = 0.0
+    for r in results:
+        expected_wins = r.total_tickets * pooled_rate
+        expected_losses = r.total_tickets * (1 - pooled_rate)
+        actual_losses = r.total_tickets - r.total_wins
+
+        if expected_wins > 0:
+            chi_sq += (r.total_wins - expected_wins) ** 2 / expected_wins
+        if expected_losses > 0:
+            chi_sq += (actual_losses - expected_losses) ** 2 / expected_losses
+
+    df = len(results) - 1
+    p_value = _chi_square_p_value(chi_sq, df)
+
+    return {
+        "ranking": sorted_rates,
+        "best_strategy": best_name,
+        "worst_strategy": worst_name,
+        "rate_difference": best_rate - worst_rate,
+        "chi_square": chi_sq,
+        "degrees_of_freedom": df,
+        "p_value": p_value,
+        "is_significant": p_value < 0.05,
+        "conclusion": (
+            f"Significant difference found (p={p_value:.4f})"
+            if p_value < 0.05
+            else "No significant difference between strategies (as expected for random lottery)"
+        ),
+    }
+
+
+def _chi_square_p_value(chi_sq: float, df: int) -> float:
+    """Approximate p-value for chi-square distribution."""
+    if df <= 0 or chi_sq <= 0:
+        return 1.0
+
+    # Wilson-Hilferty approximation
+    z = ((chi_sq / df) ** (1 / 3) - (1 - 2 / (9 * df))) / math.sqrt(2 / (9 * df))
+    return max(0.0, min(1.0, 1 - _normal_cdf(z)))
+
+
+def analyze_drawdown_distribution(win_history: list[bool]) -> dict:
+    """Analyze the distribution of losing streaks.
+
+    Args:
+        win_history: Boolean list of win/loss outcomes
+
+    Returns:
+        Dict with drawdown statistics
+    """
+    if not win_history:
+        return {"error": "No history to analyze"}
+
+    # Find all losing streaks
+    streaks = []
+    current_streak = 0
+
+    for won in win_history:
+        if won:
+            if current_streak > 0:
+                streaks.append(current_streak)
+            current_streak = 0
+        else:
+            current_streak += 1
+
+    # Don't forget the last streak if it's ongoing
+    if current_streak > 0:
+        streaks.append(current_streak)
+
+    if not streaks:
+        return {
+            "total_streaks": 0,
+            "max_streak": 0,
+            "mean_streak": 0,
+            "conclusion": "No losing streaks found (all wins)",
+        }
+
+    return {
+        "total_streaks": len(streaks),
+        "max_streak": max(streaks),
+        "min_streak": min(streaks),
+        "mean_streak": sum(streaks) / len(streaks),
+        "median_streak": sorted(streaks)[len(streaks) // 2],
+        "streak_distribution": {
+            "1-5": sum(1 for s in streaks if 1 <= s <= 5),
+            "6-10": sum(1 for s in streaks if 6 <= s <= 10),
+            "11-25": sum(1 for s in streaks if 11 <= s <= 25),
+            "26-50": sum(1 for s in streaks if 26 <= s <= 50),
+            "51+": sum(1 for s in streaks if s > 50),
+        },
+    }
+
+
+def calculate_expected_drawdown(win_rate: float, trials: int) -> dict:
+    """Calculate expected maximum drawdown for a given win rate.
+
+    Uses analytical approximation for expected longest run of failures.
+
+    Args:
+        win_rate: Probability of winning each trial
+        trials: Total number of trials
+
+    Returns:
+        Dict with expected drawdown statistics
+    """
+    if win_rate <= 0 or win_rate >= 1:
+        return {"error": "Win rate must be between 0 and 1"}
+
+    loss_rate = 1 - win_rate
+
+    # Expected longest run approximation: log_q(n) where q = loss_rate
+    # E[longest run] ≈ log(n) / log(1/q) - 0.5
+    if loss_rate > 0 and loss_rate < 1:
+        expected_max = math.log(trials) / math.log(1 / loss_rate) - 0.5
+    else:
+        expected_max = trials
+
+    # Standard deviation approximation
+    std_dev = expected_max * 0.3  # Rough approximation
+
+    return {
+        "win_rate": win_rate,
+        "trials": trials,
+        "expected_max_drawdown": expected_max,
+        "std_dev": std_dev,
+        "95_percentile": expected_max + 1.65 * std_dev,
+        "99_percentile": expected_max + 2.33 * std_dev,
+    }
+
+
+def generate_backtest_report(results: list[BacktestResult]) -> str:
+    """Generate a formatted backtest report.
+
+    Args:
+        results: List of backtest results
+
+    Returns:
+        Formatted string report
+    """
+    if not results:
+        return "No results to report."
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append("BACKTEST RESULTS REPORT")
+    lines.append("=" * 60)
+    lines.append("")
+
+    # Summary table
+    lines.append(f"{'Strategy':<15} {'Win Rate':>10} {'CI Low':>8} {'CI High':>8} {'Drawdown':>10}")
+    lines.append("-" * 60)
+
+    for r in sorted(results, key=lambda x: x.win_rate, reverse=True):
+        lines.append(
+            f"{r.strategy_name:<15} {r.win_rate:>10.2%} "
+            f"{r.confidence_interval[0]:>8.2%} {r.confidence_interval[1]:>8.2%} "
+            f"{r.max_drawdown:>10}"
+        )
+
+    lines.append("")
+
+    # Statistical comparison
+    comparison = compare_strategies(results)
+    lines.append("STATISTICAL ANALYSIS")
+    lines.append("-" * 60)
+    lines.append(f"Chi-square statistic: {comparison.get('chi_square', 0):.2f}")
+    lines.append(f"P-value: {comparison.get('p_value', 1):.4f}")
+    lines.append(f"Conclusion: {comparison.get('conclusion', 'N/A')}")
+
+    lines.append("")
+    lines.append("=" * 60)
+    lines.append("Note: For truly random lotteries, no strategy should")
+    lines.append("significantly outperform random selection.")
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
