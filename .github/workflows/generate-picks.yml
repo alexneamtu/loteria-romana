@@ -23,6 +23,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Backfill latest historical draws
+        run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
+
       - name: Generate Joker picks
         id: joker
         run: |
