@@ -80,19 +80,19 @@ def generate_random_picks(
 
 def build_frequency(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
 ) -> dict[int, int]:
     """Build frequency map from historical draws.
 
     Args:
         config: Game configuration
-        draws: List of (main_numbers, bonus) tuples
+        draws: List of main_numbers lists
 
     Returns:
         Dictionary mapping number -> frequency count
     """
     freq = {n: 0 for n in config.pool_range}
-    for main, _ in draws:
+    for main in draws:
         for n in main:
             if n in freq:
                 freq[n] += 1
@@ -101,7 +101,7 @@ def build_frequency(
 
 def generate_frequency_picks(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
 ) -> list[list[int]]:
@@ -112,7 +112,7 @@ def generate_frequency_picks(
 
     Args:
         config: Game configuration
-        draws: Historical draws as (main_numbers, bonus) tuples
+        draws: Historical draws as main_numbers lists
         count: Number of picks to generate
         rng: Random number generator
 

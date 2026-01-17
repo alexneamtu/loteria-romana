@@ -129,17 +129,22 @@ class Backtester:
 
     def evaluate_ticket(
         self,
-        ticket: tuple[list[int], int],
+        ticket: tuple[list[int], int] | list[int],
         winning_numbers: list[int],
         winning_bonus: int,
     ) -> dict[str, bool]:
         """Evaluate a ticket against winning numbers.
 
         Returns dict mapping prize tier names to whether they were won.
+        Ticket can be either a tuple (main_numbers, bonus) or just main_numbers list.
         """
-        main_numbers, bonus = ticket
+        if isinstance(ticket, tuple) and len(ticket) == 2 and isinstance(ticket[1], int):
+            main_numbers, bonus = ticket
+        else:
+            main_numbers = ticket
+            bonus = None
         matches = len(set(main_numbers) & set(winning_numbers))
-        bonus_match = bonus == winning_bonus
+        bonus_match = bonus is not None and bonus == winning_bonus
 
         results = {}
         for tier in self.prize_tiers:
@@ -191,8 +196,10 @@ class Backtester:
             actual_draw = draws[i]
             actual_main, actual_bonus = actual_draw
 
+            # Extract just main numbers for strategy training
+            training_main = [draw[0] for draw in training_draws]
             # Generate tickets
-            tickets = strategy.generate(training_draws, tickets_per_draw, rng)
+            tickets = strategy.generate(training_main, tickets_per_draw, rng)
             total_tickets += len(tickets)
 
             draw_won = False

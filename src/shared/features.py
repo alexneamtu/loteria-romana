@@ -26,7 +26,7 @@ class FeatureSet(NamedTuple):
     position_frequency: list[dict[int, int]]
 
 
-def extract_digit_frequency(draws: list[tuple]) -> dict[int, int]:
+def extract_digit_frequency(draws: list[list[int]]) -> dict[int, int]:
     """Extract frequency of individual digits (0-9) across all numbers.
 
     This can detect if players/machines have biases toward certain digits.
@@ -34,14 +34,14 @@ def extract_digit_frequency(draws: list[tuple]) -> dict[int, int]:
     Example: If '7' appears more often in ones place, digit_freq[7] will be high.
     """
     digit_freq = Counter()
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             for digit in str(num):
                 digit_freq[int(digit)] += 1
     return dict(digit_freq)
 
 
-def compute_prime_ratio(draws: list[tuple]) -> float:
+def compute_prime_ratio(draws: list[list[int]]) -> float:
     """Compute the ratio of prime numbers in draws.
 
     Returns the proportion of drawn numbers that are prime.
@@ -60,7 +60,7 @@ def compute_prime_ratio(draws: list[tuple]) -> float:
 
     total = 0
     primes = 0
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             total += 1
             if is_prime(num):
@@ -70,7 +70,7 @@ def compute_prime_ratio(draws: list[tuple]) -> float:
 
 
 def compute_modular_residues(
-    draws: list[tuple],
+    draws: list[list[int]],
     moduli: list[int] | None = None,
 ) -> dict[int, dict[int, int]]:
     """Compute distribution of numbers modulo various bases.
@@ -89,7 +89,7 @@ def compute_modular_residues(
 
     residues = {m: Counter() for m in moduli}
 
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             for m in moduli:
                 residues[m][num % m] += 1
@@ -97,7 +97,7 @@ def compute_modular_residues(
     return {m: dict(residues[m]) for m in moduli}
 
 
-def compute_entropy(draws: list[tuple], pool_size: int) -> float:
+def compute_entropy(draws: list[list[int]], pool_size: int) -> float:
     """Compute Shannon entropy of number frequency distribution.
 
     Higher entropy = more random (uniform) distribution.
@@ -112,7 +112,7 @@ def compute_entropy(draws: list[tuple], pool_size: int) -> float:
     """
     freq = Counter()
     total = 0
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             freq[num] += 1
             total += 1
@@ -130,7 +130,7 @@ def compute_entropy(draws: list[tuple], pool_size: int) -> float:
 
 
 def compute_gap_distribution(
-    draws: list[tuple],
+    draws: list[list[int]],
     pool_size: int,
 ) -> dict[int, list[int]]:
     """Compute gaps (draws between appearances) for each number.
@@ -143,7 +143,7 @@ def compute_gap_distribution(
     gaps = {n: [] for n in range(1, pool_size + 1)}
     last_seen = {n: -1 for n in range(1, pool_size + 1)}
 
-    for idx, (main, _) in enumerate(draws):
+    for idx, main in enumerate(draws):
         for num in main:
             if last_seen[num] >= 0:
                 gap = idx - last_seen[num]
@@ -153,7 +153,7 @@ def compute_gap_distribution(
     return gaps
 
 
-def compute_consecutive_frequency(draws: list[tuple]) -> dict[int, int]:
+def compute_consecutive_frequency(draws: list[list[int]]) -> dict[int, int]:
     """Count how often consecutive numbers appear together.
 
     Returns dict mapping count_of_consecutives -> frequency.
@@ -161,7 +161,7 @@ def compute_consecutive_frequency(draws: list[tuple]) -> dict[int, int]:
     """
     consecutive_counts = Counter()
 
-    for main, _ in draws:
+    for main in draws:
         sorted_nums = sorted(main)
         consecutives = 0
         for i in range(len(sorted_nums) - 1):
@@ -172,11 +172,11 @@ def compute_consecutive_frequency(draws: list[tuple]) -> dict[int, int]:
     return dict(consecutive_counts)
 
 
-def compute_odd_even_ratio(draws: list[tuple]) -> float:
+def compute_odd_even_ratio(draws: list[list[int]]) -> float:
     """Compute ratio of odd numbers to total numbers drawn."""
     odd = 0
     total = 0
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             total += 1
             if num % 2 == 1:
@@ -184,7 +184,7 @@ def compute_odd_even_ratio(draws: list[tuple]) -> float:
     return odd / total if total > 0 else 0.5
 
 
-def compute_high_low_ratio(draws: list[tuple], midpoint: int) -> float:
+def compute_high_low_ratio(draws: list[list[int]], midpoint: int) -> float:
     """Compute ratio of high numbers (>= midpoint) to total.
 
     Args:
@@ -193,7 +193,7 @@ def compute_high_low_ratio(draws: list[tuple], midpoint: int) -> float:
     """
     high = 0
     total = 0
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             total += 1
             if num >= midpoint:
@@ -201,13 +201,13 @@ def compute_high_low_ratio(draws: list[tuple], midpoint: int) -> float:
     return high / total if total > 0 else 0.5
 
 
-def compute_sum_statistics(draws: list[tuple]) -> dict[str, float]:
+def compute_sum_statistics(draws: list[list[int]]) -> dict[str, float]:
     """Compute statistics about the sum of drawn numbers.
 
     Returns min, max, mean, std of sums across all draws.
     """
     sums = []
-    for main, _ in draws:
+    for main in draws:
         sums.append(sum(main))
 
     if not sums:
@@ -226,7 +226,7 @@ def compute_sum_statistics(draws: list[tuple]) -> dict[str, float]:
 
 
 def compute_position_frequency(
-    draws: list[tuple],
+    draws: list[list[int]],
     pool_size: int,
 ) -> list[dict[int, int]]:
     """Compute frequency of each number at each position.
@@ -237,10 +237,10 @@ def compute_position_frequency(
         return []
 
     # Determine number of positions from first draw
-    num_positions = len(draws[0][0])
+    num_positions = len(draws[0])
     position_freq = [{n: 0 for n in range(1, pool_size + 1)} for _ in range(num_positions)]
 
-    for main, _ in draws:
+    for main in draws:
         sorted_nums = sorted(main)
         for pos, num in enumerate(sorted_nums):
             position_freq[pos][num] += 1
@@ -249,7 +249,7 @@ def compute_position_frequency(
 
 
 def compute_autocorrelation(
-    draws: list[tuple],
+    draws: list[list[int]],
     pool_size: int,
     lag: int = 1,
 ) -> float:
@@ -270,7 +270,7 @@ def compute_autocorrelation(
 
     # Create binary vectors for each draw (1 if number appeared)
     vectors = []
-    for main, _ in draws:
+    for main in draws:
         vec = [1 if n in main else 0 for n in range(1, pool_size + 1)]
         vectors.append(vec)
 
@@ -296,13 +296,13 @@ def compute_autocorrelation(
 
 def extract_all_features(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
 ) -> FeatureSet:
     """Extract all available features from historical draws.
 
     Args:
         config: Game configuration
-        draws: Historical draws as (main_numbers, bonus) tuples
+        draws: Historical draws as main_numbers lists
 
     Returns:
         FeatureSet with all extracted features
@@ -326,7 +326,7 @@ def extract_all_features(
 
 def get_overdue_numbers(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     threshold_factor: float = 1.5,
 ) -> list[int]:
     """Get numbers that haven't appeared for longer than expected.
@@ -351,7 +351,7 @@ def get_overdue_numbers(
 
     # Find current gap for each number
     last_seen = {n: -1 for n in range(1, pool_size + 1)}
-    for idx, (main, _) in enumerate(draws):
+    for idx, main in enumerate(draws):
         for num in main:
             last_seen[num] = idx
 
@@ -374,7 +374,7 @@ def get_overdue_numbers(
 
 def get_hot_numbers(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     recent_window: int = 10,
 ) -> list[int]:
     """Get numbers that have appeared frequently in recent draws.
@@ -393,7 +393,7 @@ def get_hot_numbers(
     recent = draws[-recent_window:] if len(draws) > recent_window else draws
     freq = Counter()
 
-    for main, _ in recent:
+    for main in recent:
         for num in main:
             freq[num] += 1
 

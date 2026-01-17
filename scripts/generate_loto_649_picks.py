@@ -160,11 +160,11 @@ def main():
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
-        lines = [main for main, _ in ensemble.generate(draw_tuples, count=args.count, rng=rng)]
+        lines = ensemble.generate(draw_tuples, count=args.count, rng=rng)
     else:
         strategy = get_strategy_by_name(args.strategy)
         if strategy:
-            lines = [main for main, _ in strategy.generate(draw_tuples, count=args.count, rng=rng)]
+            lines = strategy.generate(draw_tuples, count=args.count, rng=rng)
         else:
             lines = generate_picks(draw_tuples, count=args.count, rng=rng)
 

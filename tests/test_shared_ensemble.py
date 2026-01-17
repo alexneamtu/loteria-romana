@@ -15,7 +15,7 @@ class TestEnsembleVoter(unittest.TestCase):
         # Generate valid draws within number pool (1-45)
         rng = random.Random(42)
         self.draws = [
-            (sorted(rng.sample(range(1, 46), 5)), rng.randint(1, 20))
+            sorted(rng.sample(range(1, 46), 5))
             for _ in range(50)
         ]
 
@@ -86,11 +86,10 @@ class TestEnsembleVoter(unittest.TestCase):
         lines = ensemble.generate(self.draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertEqual(len(set(main)), 5)  # All unique
             self.assertTrue(all(1 <= n <= 45 for n in main))
-            self.assertTrue(1 <= secondary <= 20)
 
     def test_generate_unique_lines(self):
         ensemble = EnsembleVoter(self.strategies, number_pool=45, numbers_to_pick=5)
@@ -99,7 +98,7 @@ class TestEnsembleVoter(unittest.TestCase):
         lines = ensemble.generate(self.draws, count=10, rng=rng)
 
         seen = set()
-        for main, _ in lines:
+        for main in lines:
             key = tuple(main)
             self.assertNotIn(key, seen)
             seen.add(key)
@@ -111,7 +110,7 @@ class TestEnsembleVoter(unittest.TestCase):
         lines = ensemble.generate_diverse(self.draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertTrue(all(1 <= n <= 45 for n in main))
 
@@ -143,7 +142,7 @@ class TestStrategySelector(unittest.TestCase):
         # Generate valid draws within number pool (1-45)
         rng = random.Random(42)
         self.draws = [
-            (sorted(rng.sample(range(1, 46), 5)), rng.randint(1, 20))
+            sorted(rng.sample(range(1, 46), 5))
             for _ in range(100)
         ]
 
@@ -184,7 +183,7 @@ class TestStrategySelector(unittest.TestCase):
         lines = selector.generate(self.draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertTrue(all(1 <= n <= 45 for n in main))
 
@@ -233,7 +232,7 @@ class TestEnsembleIntegration(unittest.TestCase):
         # Generate valid draws within number pool (1-45)
         rng_setup = random.Random(42)
         draws = [
-            (sorted(rng_setup.sample(range(1, 46), 5)), rng_setup.randint(1, 20))
+            sorted(rng_setup.sample(range(1, 46), 5))
             for _ in range(50)
         ]
 

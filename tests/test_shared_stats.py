@@ -29,8 +29,8 @@ class TestDeltaFunctions(unittest.TestCase):
 
     def test_build_delta_distribution(self):
         draws = [
-            ([1, 2, 3, 4, 5], 1),  # deltas: [1, 1, 1, 1]
-            ([1, 3, 5, 7, 9], 2),  # deltas: [2, 2, 2, 2]
+            [1, 2, 3, 4, 5],  # deltas: [1, 1, 1, 1]
+            [1, 3, 5, 7, 9],  # deltas: [2, 2, 2, 2]
         ]
         dist = build_delta_distribution(draws)
         self.assertEqual(dist[1], 4)  # four 1s from first draw
@@ -41,35 +41,34 @@ class TestDeltaStrategy(unittest.TestCase):
     def test_delta_strategy_generates_valid_lines(self):
         strategy = DeltaStrategy(number_pool=45, numbers_to_pick=5)
         draws = [
-            ([1, 5, 10, 20, 30], 1),
-            ([2, 8, 15, 25, 40], 2),
-            ([3, 7, 12, 22, 35], 3),
+            [1, 5, 10, 20, 30],
+            [2, 8, 15, 25, 40],
+            [3, 7, 12, 22, 35],
         ]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertEqual(main, sorted(main))
             self.assertTrue(all(1 <= n <= 45 for n in main))
-            self.assertTrue(1 <= secondary <= 20)
 
     def test_delta_strategy_unique_lines(self):
         strategy = DeltaStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([i, i + 5, i + 10, i + 15, i + 20], i) for i in range(1, 20)]
+        draws = [[i, i + 5, i + 10, i + 15, i + 20] for i in range(1, 20)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=10, rng=rng)
 
         seen = set()
-        for main, _ in lines:
+        for main in lines:
             key = tuple(main)
             self.assertNotIn(key, seen)
             seen.add(key)
 
     def test_delta_strategy_get_probabilities(self):
         strategy = DeltaStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([1, 5, 10, 20, 30], 1)]
+        draws = [[1, 5, 10, 20, 30]]
         probs = strategy.get_probabilities(draws)
 
         self.assertEqual(len(probs), 45)
@@ -80,9 +79,9 @@ class TestHotColdStrategy(unittest.TestCase):
     def test_compute_heat_scores(self):
         strategy = HotColdStrategy(number_pool=10, numbers_to_pick=3, decay_rate=0.9)
         draws = [
-            ([1, 2, 3], 1),  # oldest
-            ([1, 2, 4], 2),  # middle
-            ([1, 5, 6], 3),  # most recent
+            [1, 2, 3],  # oldest
+            [1, 2, 4],  # middle
+            [1, 5, 6],  # most recent
         ]
         scores = strategy.compute_heat_scores(draws)
 
@@ -106,12 +105,12 @@ class TestHotColdStrategy(unittest.TestCase):
 
     def test_hotcold_strategy_generates_valid_lines(self):
         strategy = HotColdStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([i, i + 1, i + 2, i + 3, i + 4], i) for i in range(1, 30)]
+        draws = [[i, i + 1, i + 2, i + 3, i + 4] for i in range(1, 30)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertTrue(all(1 <= n <= 45 for n in main))
 
@@ -120,9 +119,9 @@ class TestPairStrategy(unittest.TestCase):
     def test_build_pair_matrix(self):
         strategy = PairStrategy(number_pool=10, numbers_to_pick=3)
         draws = [
-            ([1, 2, 3], 1),
-            ([1, 2, 4], 2),
-            ([2, 3, 5], 3),
+            [1, 2, 3],
+            [1, 2, 4],
+            [2, 3, 5],
         ]
         pairs = strategy.build_pair_matrix(draws)
 
@@ -142,12 +141,12 @@ class TestPairStrategy(unittest.TestCase):
 
     def test_pair_strategy_generates_valid_lines(self):
         strategy = PairStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([i, i + 1, i + 2, i + 3, i + 4], i) for i in range(1, 30)]
+        draws = [[i, i + 1, i + 2, i + 3, i + 4] for i in range(1, 30)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertEqual(len(set(main)), 5)  # All unique
             self.assertTrue(all(1 <= n <= 45 for n in main))
@@ -157,9 +156,9 @@ class TestSkipGapStrategy(unittest.TestCase):
     def test_compute_gaps(self):
         strategy = SkipGapStrategy(number_pool=10, numbers_to_pick=3)
         draws = [
-            ([1, 2, 3], 1),  # index 0
-            ([4, 5, 6], 2),  # index 1
-            ([1, 7, 8], 3),  # index 2 - number 1 reappears
+            [1, 2, 3],  # index 0
+            [4, 5, 6],  # index 1
+            [1, 7, 8],  # index 2 - number 1 reappears
         ]
         gaps = strategy.compute_gaps(draws)
 
@@ -174,9 +173,9 @@ class TestSkipGapStrategy(unittest.TestCase):
     def test_compute_expected_gaps(self):
         strategy = SkipGapStrategy(number_pool=10, numbers_to_pick=3)
         draws = [
-            ([1, 2, 3], 1),  # index 0
-            ([1, 4, 5], 2),  # index 1 - gap of 1 for number 1
-            ([1, 6, 7], 3),  # index 2 - gap of 1 for number 1
+            [1, 2, 3],  # index 0
+            [1, 4, 5],  # index 1 - gap of 1 for number 1
+            [1, 6, 7],  # index 2 - gap of 1 for number 1
         ]
         expected = strategy.compute_expected_gaps(draws)
 
@@ -185,12 +184,12 @@ class TestSkipGapStrategy(unittest.TestCase):
 
     def test_skip_strategy_generates_valid_lines(self):
         strategy = SkipGapStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([i, i + 1, i + 2, i + 3, i + 4], i) for i in range(1, 30)]
+        draws = [[i, i + 1, i + 2, i + 3, i + 4] for i in range(1, 30)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertTrue(all(1 <= n <= 45 for n in main))
 
@@ -199,9 +198,9 @@ class TestSumConstraintStrategy(unittest.TestCase):
     def test_compute_sum_distribution(self):
         strategy = SumConstraintStrategy(number_pool=45, numbers_to_pick=5)
         draws = [
-            ([1, 10, 20, 30, 40], 1),  # sum = 101
-            ([5, 15, 25, 35, 45], 2),  # sum = 125
-            ([2, 12, 22, 32, 42], 3),  # sum = 110
+            [1, 10, 20, 30, 40],  # sum = 101
+            [5, 15, 25, 35, 45],  # sum = 125
+            [2, 12, 22, 32, 42],  # sum = 110
         ]
         mean_sum, std_sum = strategy.compute_sum_distribution(draws)
 
@@ -211,19 +210,19 @@ class TestSumConstraintStrategy(unittest.TestCase):
 
     def test_sum_strategy_generates_valid_lines(self):
         strategy = SumConstraintStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([10, 15, 20, 25, 30], i) for i in range(1, 20)]  # sum = 100
+        draws = [[10, 15, 20, 25, 30] for _ in range(1, 20)]  # sum = 100
         rng = random.Random(42)
         lines = strategy.generate(draws, count=5, rng=rng, sigma_range=2.0)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertTrue(all(1 <= n <= 45 for n in main))
 
     def test_sum_strategy_respects_sum_range(self):
         strategy = SumConstraintStrategy(number_pool=45, numbers_to_pick=5)
         # All draws have sum = 100
-        draws = [([10, 15, 20, 25, 30], i) for i in range(1, 50)]
+        draws = [[10, 15, 20, 25, 30] for _ in range(1, 50)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=10, rng=rng, sigma_range=1.0)
 
@@ -231,7 +230,7 @@ class TestSumConstraintStrategy(unittest.TestCase):
         min_sum = mean_sum - 1.0 * std_sum
         max_sum = mean_sum + 1.0 * std_sum
 
-        for main, _ in lines:
+        for main in lines:
             line_sum = sum(main)
             # Allow some tolerance since std might be very small
             self.assertGreaterEqual(line_sum, min_sum - 10)
@@ -241,9 +240,9 @@ class TestSumConstraintStrategy(unittest.TestCase):
 class TestPatternUtilities(unittest.TestCase):
     def test_compute_odd_even_distribution(self):
         draws = [
-            ([1, 3, 5, 7, 9], 1),  # 5 odd
-            ([2, 4, 6, 8, 10], 2),  # 0 odd
-            ([1, 2, 3, 4, 5], 3),  # 3 odd
+            [1, 3, 5, 7, 9],  # 5 odd
+            [2, 4, 6, 8, 10],  # 0 odd
+            [1, 2, 3, 4, 5],  # 3 odd
         ]
         dist = compute_odd_even_distribution(draws)
 
@@ -253,9 +252,9 @@ class TestPatternUtilities(unittest.TestCase):
 
     def test_compute_high_low_distribution(self):
         draws = [
-            ([1, 2, 3, 4, 5], 1),  # 0 high (midpoint=23)
-            ([20, 25, 30, 35, 40], 2),  # 4 high
-            ([10, 15, 25, 30, 35], 3),  # 3 high
+            [1, 2, 3, 4, 5],  # 0 high (midpoint=23)
+            [20, 25, 30, 35, 40],  # 4 high
+            [10, 15, 25, 30, 35],  # 3 high
         ]
         dist = compute_high_low_distribution(draws, midpoint=23)
 
@@ -270,9 +269,9 @@ class TestPatternUtilities(unittest.TestCase):
 
     def test_compute_consecutive_distribution(self):
         draws = [
-            ([1, 2, 3, 4, 5], 1),  # 4 consecutive pairs
-            ([1, 3, 5, 7, 9], 2),  # 0 consecutive pairs
-            ([1, 2, 5, 6, 10], 3),  # 2 consecutive pairs
+            [1, 2, 3, 4, 5],  # 4 consecutive pairs
+            [1, 3, 5, 7, 9],  # 0 consecutive pairs
+            [1, 2, 5, 6, 10],  # 2 consecutive pairs
         ]
         dist = compute_consecutive_distribution(draws)
 
@@ -284,9 +283,9 @@ class TestPatternUtilities(unittest.TestCase):
 class TestPositionFrequency(unittest.TestCase):
     def test_build_position_frequency(self):
         draws = [
-            ([1, 5, 10, 15, 20], 1),
-            ([2, 5, 12, 15, 25], 2),
-            ([1, 6, 10, 18, 20], 3),
+            [1, 5, 10, 15, 20],
+            [2, 5, 12, 15, 25],
+            [1, 6, 10, 18, 20],
         ]
         freq = build_position_frequency(draws, numbers_to_pick=5, number_pool=45)
 
@@ -309,9 +308,9 @@ class TestBalanceStrategy(unittest.TestCase):
     def test_compute_target_ratios(self):
         strategy = BalanceStrategy(number_pool=45, numbers_to_pick=5)
         draws = [
-            ([1, 3, 5, 7, 9], 1),  # 5 odd, 0 high (midpoint=23)
-            ([2, 4, 6, 8, 10], 2),  # 0 odd, 0 high
-            ([1, 2, 24, 25, 26], 3),  # 2 odd (1, 25), 3 high
+            [1, 3, 5, 7, 9],  # 5 odd, 0 high (midpoint=23)
+            [2, 4, 6, 8, 10],  # 0 odd, 0 high
+            [1, 2, 24, 25, 26],  # 2 odd (1, 25), 3 high
         ]
         odd_probs, high_probs = strategy.compute_target_ratios(draws)
 
@@ -321,16 +320,15 @@ class TestBalanceStrategy(unittest.TestCase):
 
     def test_balance_strategy_generates_valid_lines(self):
         strategy = BalanceStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([i, i + 5, i + 10, i + 20, i + 30], i) for i in range(1, 15)]
+        draws = [[i, i + 5, i + 10, i + 20, i + 30] for i in range(1, 15)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=5, rng=rng)
 
         self.assertEqual(len(lines), 5)
-        for main, secondary in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
             self.assertEqual(len(set(main)), 5)  # All unique
             self.assertTrue(all(1 <= n <= 45 for n in main))
-            self.assertTrue(1 <= secondary <= 20)
 
     def test_balance_strategy_with_empty_history(self):
         strategy = BalanceStrategy(number_pool=45, numbers_to_pick=5)
@@ -339,17 +337,17 @@ class TestBalanceStrategy(unittest.TestCase):
 
         # Should use default balanced distribution
         self.assertEqual(len(lines), 3)
-        for main, _ in lines:
+        for main in lines:
             self.assertEqual(len(main), 5)
 
     def test_balance_strategy_unique_lines(self):
         strategy = BalanceStrategy(number_pool=45, numbers_to_pick=5)
-        draws = [([i, i + 5, i + 10, i + 20, i + 30], i) for i in range(1, 15)]
+        draws = [[i, i + 5, i + 10, i + 20, i + 30] for i in range(1, 15)]
         rng = random.Random(42)
         lines = strategy.generate(draws, count=10, rng=rng)
 
         seen = set()
-        for main, _ in lines:
+        for main in lines:
             key = tuple(main)
             self.assertNotIn(key, seen)
             seen.add(key)
@@ -383,17 +381,17 @@ class TestStrategyIntegration(unittest.TestCase):
             SumConstraintStrategy(45, 5),
             BalanceStrategy(45, 5),
         ]
-        draws = [([i, i + 5, i + 10, i + 15, i + 20], i) for i in range(1, 20)]
+        draws = [[i, i + 5, i + 10, i + 15, i + 20] for i in range(1, 20)]
         rng = random.Random(42)
 
         for strategy in strategies:
             lines = strategy.generate(draws, count=5, rng=rng)
-            for main, _ in lines:
+            for main in lines:
                 self.assertEqual(len(main), len(set(main)), f"{strategy.name} produced duplicates")
 
     def test_strategies_are_deterministic_with_seed(self):
         """Same seed should produce same results."""
-        draws = [([i, i + 5, i + 10, i + 15, i + 20], i) for i in range(1, 20)]
+        draws = [[i, i + 5, i + 10, i + 15, i + 20] for i in range(1, 20)]
 
         for StrategyClass in [DeltaStrategy, HotColdStrategy, PairStrategy, SkipGapStrategy, SumConstraintStrategy, BalanceStrategy]:
             strategy1 = StrategyClass(45, 5)

@@ -13,15 +13,15 @@ class Strategy(Protocol):
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         ...
 
     def get_probabilities(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
     ) -> list[float]:
         ...
 
@@ -92,7 +92,7 @@ class EnsembleVoter:
 
     def combine_probabilities(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
     ) -> list[float]:
         """Combine probability distributions from all strategies.
 
@@ -120,17 +120,17 @@ class EnsembleVoter:
 
     def get_probabilities(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
     ) -> list[float]:
         """Alias for combine_probabilities for protocol compatibility."""
         return self.combine_probabilities(draws)
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines using weighted strategy voting.
 
         Uses multiple generation methods:
@@ -153,8 +153,7 @@ class EnsembleVoter:
             key = tuple(line)
             if key not in seen:
                 seen.add(key)
-                secondary = rng.randint(1, self.secondary_pool)
-                lines.append((line, secondary))
+                lines.append(line)
 
         # Method 2: Collect lines from individual strategies
         remaining = count - len(lines)
@@ -197,11 +196,11 @@ class EnsembleVoter:
 
     def _collect_strategy_lines(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
         seen: set,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Collect lines from individual strategies proportional to weights."""
         lines = []
 
@@ -234,11 +233,11 @@ class EnsembleVoter:
                 continue
 
             strategy_lines = strategy.generate(draws, n * 2, rng)
-            for main, secondary in strategy_lines:
+            for main in strategy_lines:
                 key = tuple(main)
                 if key not in seen:
                     seen.add(key)
-                    lines.append((main, secondary))
+                    lines.append(main)
                     if len(lines) >= count:
                         break
 
@@ -249,10 +248,10 @@ class EnsembleVoter:
 
     def generate_diverse(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate diverse lines by ensuring representation from all strategies.
 
         Unlike regular generate(), this method guarantees at least one line
@@ -264,22 +263,22 @@ class EnsembleVoter:
         # First, get at least one line from each strategy
         for strategy in self.strategies:
             strategy_lines = strategy.generate(draws, 3, rng)
-            for main, secondary in strategy_lines:
+            for main in strategy_lines:
                 key = tuple(main)
                 if key not in seen:
                     seen.add(key)
-                    lines.append((main, secondary))
+                    lines.append(main)
                     break
 
         # Fill remaining with weighted generation
         remaining = count - len(lines)
         if remaining > 0:
             additional = self.generate(draws, remaining * 2, rng)
-            for main, secondary in additional:
+            for main in additional:
                 key = tuple(main)
                 if key not in seen:
                     seen.add(key)
-                    lines.append((main, secondary))
+                    lines.append(main)
                     if len(lines) >= count:
                         break
 
@@ -312,7 +311,7 @@ class StrategySelector:
     def evaluate_strategy(
         self,
         strategy: Strategy,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         n_eval: int = 20,
         rng: random.Random | None = None,
     ) -> float:
@@ -330,10 +329,10 @@ class StrategySelector:
 
         for i in range(len(draws) - n_eval, len(draws)):
             training = draws[:i]
-            actual_main, actual_bonus = draws[i]
+            actual_main = draws[i]
 
             tickets = strategy.generate(training, 1, rng)
-            for main, _ in tickets:
+            for main in tickets:
                 matches = len(set(main) & set(actual_main))
                 total_matches += matches
                 total_tickets += 1
@@ -342,7 +341,7 @@ class StrategySelector:
 
     def select_best(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         rng: random.Random | None = None,
     ) -> Strategy:
         """Select the best performing strategy."""
@@ -363,7 +362,7 @@ class StrategySelector:
 
     def get_probabilities(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
     ) -> list[float]:
         """Get probabilities from the best strategy."""
         best = self.select_best(draws)
@@ -371,10 +370,10 @@ class StrategySelector:
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate using the best strategy."""
         best = self.select_best(draws, rng)
         return best.generate(draws, count, rng)

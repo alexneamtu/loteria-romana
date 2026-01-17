@@ -23,17 +23,17 @@ def compute_deltas(sorted_numbers: list[int]) -> list[int]:
     ]
 
 
-def build_delta_distribution(draws: list[tuple[list[int], int]]) -> dict[int, int]:
+def build_delta_distribution(draws: list[list[int]]) -> dict[int, int]:
     """Build frequency distribution of deltas from historical draws.
 
     Args:
-        draws: List of (main_numbers, secondary) tuples
+        draws: List of main_numbers lists
 
     Returns:
         Dict mapping delta values to their occurrence counts
     """
     delta_counts: dict[int, int] = {}
-    for main, _ in draws:
+    for main in draws:
         sorted_main = sorted(main)
         for delta in compute_deltas(sorted_main):
             delta_counts[delta] = delta_counts.get(delta, 0) + 1
@@ -53,7 +53,7 @@ class DeltaStrategy:
         self.secondary_pool = secondary_pool
         self.name = "delta"
 
-    def get_probabilities(self, draws: list[tuple[list[int], int]]) -> list[float]:
+    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get probability distribution based on delta analysis."""
         if not draws:
             return [1.0 / self.number_pool] * self.number_pool
@@ -66,7 +66,7 @@ class DeltaStrategy:
         for n in range(self.number_pool):
             # Score based on how often this number appears at valid delta positions
             score = 1.0
-            for main, _ in draws:
+            for main in draws:
                 sorted_main = sorted(main)
                 if n + 1 in sorted_main:
                     score += 1.0
@@ -77,10 +77,10 @@ class DeltaStrategy:
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines using sampled deltas from historical distribution."""
         delta_dist = build_delta_distribution(draws)
 
@@ -102,8 +102,7 @@ class DeltaStrategy:
                 key = tuple(line)
                 if key not in seen:
                     seen.add(key)
-                    secondary = rng.randint(1, self.secondary_pool)
-                    lines.append((line, secondary))
+                    lines.append(line)
             attempts += 1
 
         return lines
@@ -162,7 +161,7 @@ class HotColdStrategy:
         self.name = "hotcold"
 
     def compute_heat_scores(
-        self, draws: list[tuple[list[int], int]]
+        self, draws: list[list[int]]
     ) -> dict[int, float]:
         """Compute time-weighted frequency scores.
 
@@ -170,7 +169,7 @@ class HotColdStrategy:
         """
         scores = {n: 0.0 for n in range(1, self.number_pool + 1)}
 
-        for age, (main, _) in enumerate(reversed(draws)):
+        for age, main in enumerate(reversed(draws)):
             weight = self.decay_rate ** age
             for n in main:
                 scores[n] += weight
@@ -199,7 +198,7 @@ class HotColdStrategy:
 
         return hot, cold, neutral
 
-    def get_probabilities(self, draws: list[tuple[list[int], int]]) -> list[float]:
+    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get probability distribution based on heat scores."""
         scores = self.compute_heat_scores(draws)
         total = sum(scores.values()) or 1.0
@@ -207,12 +206,12 @@ class HotColdStrategy:
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
         hot_ratio: float = 0.4,
         cold_ratio: float = 0.2,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines with specified hot/cold/neutral mix."""
         scores = self.compute_heat_scores(draws)
         hot, cold, neutral = self.classify_numbers(scores)
@@ -256,8 +255,7 @@ class HotColdStrategy:
                 key = tuple(sorted(line))
                 if key not in seen:
                     seen.add(key)
-                    secondary = rng.randint(1, self.secondary_pool)
-                    lines.append((sorted(line), secondary))
+                    lines.append(sorted(line))
 
         return lines[:count]
 
@@ -276,11 +274,11 @@ class PairStrategy:
         self.name = "pairs"
 
     def build_pair_matrix(
-        self, draws: list[tuple[list[int], int]]
+        self, draws: list[list[int]]
     ) -> dict[tuple[int, int], int]:
         """Build pair co-occurrence counts."""
         pair_counts: dict[tuple[int, int], int] = {}
-        for main, _ in draws:
+        for main in draws:
             for pair in combinations(sorted(main), 2):
                 pair_counts[pair] = pair_counts.get(pair, 0) + 1
         return pair_counts
@@ -292,7 +290,7 @@ class PairStrategy:
         sorted_pairs = sorted(pair_counts.items(), key=lambda x: x[1], reverse=True)
         return [pair for pair, _ in sorted_pairs[:top_n]]
 
-    def get_probabilities(self, draws: list[tuple[list[int], int]]) -> list[float]:
+    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get probability distribution based on pair frequency."""
         pair_counts = self.build_pair_matrix(draws)
 
@@ -307,10 +305,10 @@ class PairStrategy:
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines favoring strong pairs."""
         pair_counts = self.build_pair_matrix(draws)
 
@@ -359,8 +357,7 @@ class PairStrategy:
                 key = tuple(sorted(line))
                 if key not in seen:
                     seen.add(key)
-                    secondary = rng.randint(1, self.secondary_pool)
-                    lines.append((sorted(line), secondary))
+                    lines.append(sorted(line))
 
         return lines[:count]
 
@@ -378,11 +375,11 @@ class SkipGapStrategy:
         self.secondary_pool = secondary_pool
         self.name = "skip"
 
-    def compute_gaps(self, draws: list[tuple[list[int], int]]) -> dict[int, int]:
+    def compute_gaps(self, draws: list[list[int]]) -> dict[int, int]:
         """Compute draws since each number last appeared."""
         gaps = {n: len(draws) for n in range(1, self.number_pool + 1)}
 
-        for age, (main, _) in enumerate(reversed(draws)):
+        for age, main in enumerate(reversed(draws)):
             for n in main:
                 if gaps[n] == len(draws):  # First occurrence found
                     gaps[n] = age
@@ -390,7 +387,7 @@ class SkipGapStrategy:
         return gaps
 
     def compute_expected_gaps(
-        self, draws: list[tuple[list[int], int]]
+        self, draws: list[list[int]]
     ) -> dict[int, float]:
         """Compute average gap for each number historically."""
         gap_history: dict[int, list[int]] = {
@@ -398,7 +395,7 @@ class SkipGapStrategy:
         }
         last_seen: dict[int, int] = {n: -1 for n in range(1, self.number_pool + 1)}
 
-        for idx, (main, _) in enumerate(draws):
+        for idx, main in enumerate(draws):
             for n in main:
                 if last_seen[n] >= 0:
                     gap_history[n].append(idx - last_seen[n])
@@ -412,7 +409,7 @@ class SkipGapStrategy:
             for n, gaps in gap_history.items()
         }
 
-    def get_probabilities(self, draws: list[tuple[list[int], int]]) -> list[float]:
+    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get probability distribution based on overdue scores."""
         current_gaps = self.compute_gaps(draws)
         expected_gaps = self.compute_expected_gaps(draws)
@@ -431,10 +428,10 @@ class SkipGapStrategy:
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines favoring overdue numbers."""
         current_gaps = self.compute_gaps(draws)
         expected_gaps = self.compute_expected_gaps(draws)
@@ -459,8 +456,7 @@ class SkipGapStrategy:
             key = tuple(line)
             if key not in seen:
                 seen.add(key)
-                secondary = rng.randint(1, self.secondary_pool)
-                lines.append((line, secondary))
+                lines.append(line)
 
         return lines[:count]
 
@@ -503,10 +499,10 @@ class SumConstraintStrategy:
         self.name = "sum"
 
     def compute_sum_distribution(
-        self, draws: list[tuple[list[int], int]]
+        self, draws: list[list[int]]
     ) -> tuple[float, float]:
         """Compute mean and std of historical sums."""
-        sums = [sum(main) for main, _ in draws]
+        sums = [sum(main) for main in draws]
 
         if not sums:
             # Theoretical expected sum for uniform distribution
@@ -518,17 +514,17 @@ class SumConstraintStrategy:
 
         return m, max(s, 1.0)  # Ensure non-zero std
 
-    def get_probabilities(self, draws: list[tuple[list[int], int]]) -> list[float]:
+    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get uniform probability distribution (sum constraint is applied during generation)."""
         return [1.0 / self.number_pool] * self.number_pool
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
         sigma_range: float = 1.5,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines with sums within sigma_range of historical mean."""
         mean_sum, std_sum = self.compute_sum_distribution(draws)
         min_sum = mean_sum - sigma_range * std_sum
@@ -550,8 +546,7 @@ class SumConstraintStrategy:
                 key = tuple(line)
                 if key not in seen:
                     seen.add(key)
-                    secondary = rng.randint(1, self.secondary_pool)
-                    lines.append((line, secondary))
+                    lines.append(line)
 
             attempts += 1
 
@@ -561,22 +556,22 @@ class SumConstraintStrategy:
 # Utility functions for pattern analysis
 
 def compute_odd_even_distribution(
-    draws: list[tuple[list[int], int]]
+    draws: list[list[int]]
 ) -> dict[int, int]:
     """Count how many odd numbers per draw historically."""
     dist: dict[int, int] = {}
-    for main, _ in draws:
+    for main in draws:
         odd_count = sum(1 for n in main if n % 2 == 1)
         dist[odd_count] = dist.get(odd_count, 0) + 1
     return dist
 
 
 def compute_high_low_distribution(
-    draws: list[tuple[list[int], int]], midpoint: int
+    draws: list[list[int]], midpoint: int
 ) -> dict[int, int]:
     """Count how many high numbers (>= midpoint) per draw."""
     dist: dict[int, int] = {}
-    for main, _ in draws:
+    for main in draws:
         high_count = sum(1 for n in main if n >= midpoint)
         dist[high_count] = dist.get(high_count, 0) + 1
     return dist
@@ -592,18 +587,18 @@ def count_consecutives(sorted_numbers: list[int]) -> int:
 
 
 def compute_consecutive_distribution(
-    draws: list[tuple[list[int], int]]
+    draws: list[list[int]]
 ) -> dict[int, int]:
     """Distribution of consecutive pairs in historical draws."""
     dist: dict[int, int] = {}
-    for main, _ in draws:
+    for main in draws:
         consec_count = count_consecutives(sorted(main))
         dist[consec_count] = dist.get(consec_count, 0) + 1
     return dist
 
 
 def build_position_frequency(
-    draws: list[tuple[list[int], int]],
+    draws: list[list[int]],
     numbers_to_pick: int,
     number_pool: int,
 ) -> list[dict[int, int]]:
@@ -621,7 +616,7 @@ def build_position_frequency(
         {} for _ in range(numbers_to_pick)
     ]
 
-    for main, _ in draws:
+    for main in draws:
         sorted_main = sorted(main)
         for pos, num in enumerate(sorted_main):
             position_counts[pos][num] = position_counts[pos].get(num, 0) + 1
@@ -650,7 +645,7 @@ class BalanceStrategy:
         self.midpoint = (number_pool + 1) // 2
 
     def compute_target_ratios(
-        self, draws: list[tuple[list[int], int]]
+        self, draws: list[list[int]]
     ) -> tuple[dict[int, float], dict[int, float]]:
         """Compute probability distributions for odd/even and high/low counts."""
         odd_dist = compute_odd_even_distribution(draws)
@@ -664,16 +659,16 @@ class BalanceStrategy:
 
         return odd_probs, high_probs
 
-    def get_probabilities(self, draws: list[tuple[list[int], int]]) -> list[float]:
+    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
         """Get uniform probability distribution (balance is applied during generation)."""
         return [1.0 / self.number_pool] * self.number_pool
 
     def generate(
         self,
-        draws: list[tuple[list[int], int]],
+        draws: list[list[int]],
         count: int,
         rng: random.Random,
-    ) -> list[tuple[list[int], int]]:
+    ) -> list[list[int]]:
         """Generate lines matching historical balance distributions."""
         odd_probs, high_probs = self.compute_target_ratios(draws)
 
@@ -709,8 +704,7 @@ class BalanceStrategy:
                 key = tuple(line)
                 if key not in seen:
                     seen.add(key)
-                    secondary = rng.randint(1, self.secondary_pool)
-                    lines.append((line, secondary))
+                    lines.append(line)
 
         return lines[:count]
 

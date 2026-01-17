@@ -22,7 +22,7 @@ from .game_strategies import _sample_weighted
 
 def compute_composite_scores(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     weights: dict[str, float] | None = None,
 ) -> dict[int, float]:
     """Compute composite probability scores for each number.
@@ -61,7 +61,7 @@ def compute_composite_scores(
     # 1. Frequency score (how often each number appears)
     freq = Counter()
     total = 0
-    for main, _ in draws:
+    for main in draws:
         for num in main:
             freq[num] += 1
             total += 1
@@ -73,7 +73,7 @@ def compute_composite_scores(
     # 2. Recency score (exponential decay weighting)
     decay_rate = 0.95
     recency_score = {n: 0.0 for n in config.pool_range}
-    for idx, (main, _) in enumerate(draws):
+    for idx, main in enumerate(draws):
         weight = decay_rate ** (len(draws) - idx - 1)
         for num in main:
             recency_score[num] += weight
@@ -112,10 +112,10 @@ def compute_composite_scores(
         freq_first = Counter()
         freq_second = Counter()
 
-        for main, _ in first_half:
+        for main in first_half:
             for num in main:
                 freq_first[num] += 1
-        for main, _ in second_half:
+        for main in second_half:
             for num in main:
                 freq_second[num] += 1
 
@@ -155,7 +155,7 @@ def compute_composite_scores(
 
 def generate_optimal_picks(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
     strategy: Literal["balanced", "aggressive", "conservative"] = "balanced",
@@ -225,7 +225,7 @@ def generate_optimal_picks(
 
 def generate_coverage_picks(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
 ) -> list[list[int]]:
@@ -275,7 +275,7 @@ def generate_coverage_picks(
 
 def generate_pattern_picks(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
 ) -> list[list[int]]:
@@ -303,7 +303,7 @@ def generate_pattern_picks(
         return generate_random_picks(config, count, rng)
 
     # Analyze historical patterns
-    sums = [sum(main) for main, _ in draws]
+    sums = [sum(main) for main in draws]
     min_sum = min(sums)
     max_sum = max(sums)
     avg_sum = sum(sums) / len(sums)
@@ -311,7 +311,7 @@ def generate_pattern_picks(
 
     # Odd/even patterns
     odd_counts = []
-    for main, _ in draws:
+    for main in draws:
         odd_counts.append(sum(1 for n in main if n % 2 == 1))
     avg_odd = sum(odd_counts) / len(odd_counts)
     target_odd = round(avg_odd)
@@ -319,7 +319,7 @@ def generate_pattern_picks(
     # High/low patterns
     midpoint = config.pool_min + config.pool_size // 2
     high_counts = []
-    for main, _ in draws:
+    for main in draws:
         high_counts.append(sum(1 for n in main if n >= midpoint))
     avg_high = sum(high_counts) / len(high_counts)
     target_high = round(avg_high)
@@ -366,7 +366,7 @@ def generate_pattern_picks(
 
 def generate_smart_picks(
     config: GameConfig,
-    draws: list[tuple],
+    draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
 ) -> list[list[int]]:
