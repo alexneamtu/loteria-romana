@@ -2,8 +2,8 @@ name: Generate Lottery Picks
 
 on:
   schedule:
-    # Generate picks: Sunday and Thursday at 4 PM UTC (6 PM EET) - before draws
-    - cron: '0 16 * * 0,4'
+    # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
+    - cron: '0 10 * * 0,4'
     # Check results: Monday and Friday at 6 AM UTC (8 AM EET) - morning after draws
     - cron: '0 6 * * 1,5'
   workflow_dispatch:
@@ -19,7 +19,7 @@ on:
 
 jobs:
   generate-picks:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate' || github.event_name == 'schedule' && github.event.schedule == '0 16 * * 0,4'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate' || github.event_name == 'schedule' && github.event.schedule == '0 10 * * 0,4'
     runs-on: ubuntu-latest
 
     steps:
