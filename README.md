@@ -1,11 +1,11 @@
 # Loteria Romana - Lottery Modeling Pipelines
 
-A loto.ro-only research pipeline that ingests historical results, stores clean datasets, and generates weekly lines using multiple strategies (random, frequency-weighted, and a lightweight neural baseline). The goal is transparent experimentation, not guaranteed wins.
+A loto.ro-only research pipeline that ingests historical results, stores clean datasets, and generates weekly lines using multiple strategies including statistical analysis, neural networks, ensemble methods, and wheeling systems. The goal is transparent experimentation, not guaranteed wins.
 
 ## What this is / isn't
 
 - This is a loto.ro-only pipeline for Joker and Loto 6/49 + Noroc.
-- It is an experiment in sampling strategies and simple modeling.
+- It is an experiment in sampling strategies and statistical modeling.
 - It does not improve expected value; lottery outcomes remain random.
 - It is not a predictor and not financial advice.
 
@@ -17,56 +17,95 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 - Data source: official results pages on loto.ro.
 - Out of scope: other lotteries/games.
 
-## Current status
+## Features
 
-Implemented:
-- HTML parsers for Joker and Loto 6/49 + Noroc.
-- Dataset update flow (cache HTML -> CSV storage).
-- Prize rule checks (any prize) for each game.
-- Random and frequency-weighted line generation.
-- Neural sampler (softmax baseline) for main numbers.
-- Backtesting and best-strategy selection.
-- Weekly picks scripts that print 2 lines (Variant A/B) per run.
+### Statistical Strategies
+- **Delta Analysis** - generates numbers based on historical delta (gap) distributions
+- **Hot/Cold Numbers** - time-weighted frequency with exponential decay
+- **Pair Correlation** - tracks which number pairs appear together frequently
+- **Skip/Gap Analysis** - favors "overdue" numbers based on expected gaps
+- **Sum Constraints** - filters lines by total sum within historical range
+- **Balance Strategy** - matches historical odd/even and high/low ratios
 
-## Data sources
+### Neural Networks
+- **MLP (Multi-Layer Perceptron)** - configurable hidden layers with L2 regularization
+- **LSTM** - sequence learning for temporal patterns in draw history
 
-- Joker results:
-  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html
-- Loto 6/49 + Noroc results:
-  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html
+### Ensemble Methods
+- **Ensemble Voter** - combines all strategies with weighted voting
+- **Strategy Selector** - automatically selects best-performing strategy
 
-HTML is cached locally to avoid repeated downloads. Parsed draws are stored as CSV to keep the pipeline lightweight and reproducible.
+### Wheeling Systems
+- **Abbreviated Wheels** - reduce tickets while guaranteeing minimum matches
+- **Key Number Wheels** - ensure specific numbers appear in every ticket
+- **Coverage Verification** - validates wheel coverage guarantees
 
-## Pipeline overview
-
-1. Fetch results HTML (or read from cache).
-2. Parse draws into structured records.
-3. Append new draws to CSV dataset.
-4. Generate candidate lines via strategies.
-5. Backtest strategies and pick the best.
-6. Output 2 variants per run.
-
-## Strategies
-
-- Random: uniform sampling without replacement for main numbers.
-- Frequency-weighted: uses full-history counts with +1 smoothing.
-- Neural baseline: simple softmax model trained on previous draw -> next draw.
+### Backtesting
+- Prize tier tracking (3-match, 4-match, etc.)
+- Wilson score confidence intervals
+- Maximum drawdown (longest losing streak)
+- Rolling window cross-validation
 
 ## Quickstart
 
-Run all tests:
+Run all tests (174 tests):
 
 ```bash
 PYTHONPATH=src python -m unittest -v
 ```
 
-Generate 2 Joker variants before each draw:
+### Basic Usage
+
+Generate 2 Joker picks (auto-selects best strategy):
 
 ```bash
 PYTHONPATH=src python scripts/generate_joker_picks.py
 ```
 
-Reproducible Joker variants with a fixed seed:
+Generate 2 Loto 6/49 picks:
+
+```bash
+PYTHONPATH=src python scripts/generate_loto_649_picks.py
+```
+
+### Strategy Selection
+
+Use a specific strategy:
+
+```bash
+# Available: auto, delta, hotcold, pairs, skip, sum, balance, ensemble
+PYTHONPATH=src python scripts/generate_joker_picks.py -s ensemble -n 5
+```
+
+### Wheeling Systems
+
+Generate a wheel with 10 numbers and 3-match guarantee:
+
+```bash
+PYTHONPATH=src python scripts/generate_joker_picks.py --wheel 10 --wheel-guarantee 3 -v
+```
+
+Generate a Loto 6/49 wheel with 12 numbers and 4-match guarantee:
+
+```bash
+PYTHONPATH=src python scripts/generate_loto_649_picks.py --wheel 12 --wheel-guarantee 4 -v
+```
+
+### CLI Options
+
+```
+-n, --count N          Number of lines to generate (default: 2)
+-s, --strategy NAME    Strategy: auto, delta, hotcold, pairs, skip, sum, balance, ensemble
+-v, --verbose          Show detailed strategy information
+--seed N               Set deterministic RNG seed
+--wheel N              Generate wheeling system with N numbers
+--wheel-guarantee N    Minimum match guarantee for wheeling
+--no-noroc             Omit Noroc from Loto 6/49 picks
+```
+
+### Reproducibility
+
+Fixed seed via argument:
 
 ```bash
 PYTHONPATH=src python scripts/generate_joker_picks.py --seed 123
@@ -76,45 +115,47 @@ Or via environment variable:
 
 ```bash
 JOKER_SEED=123 PYTHONPATH=src python scripts/generate_joker_picks.py
-```
-
-Generate 2 Loto 6/49 + Noroc variants before each draw:
-
-```bash
-PYTHONPATH=src python scripts/generate_loto_649_picks.py
-```
-
-Omit Noroc (main numbers only):
-
-```bash
-PYTHONPATH=src python scripts/generate_loto_649_picks.py --no-noroc
-```
-
-Reproducible Loto 6/49 variants with a fixed seed:
-
-```bash
-PYTHONPATH=src python scripts/generate_loto_649_picks.py --seed 123
-```
-
-Or via environment variable:
-
-```bash
 LOTO_649_SEED=123 PYTHONPATH=src python scripts/generate_loto_649_picks.py
 ```
 
-Output format:
+### Output Format
+
 - Joker: `1. 7, 11, 44, 45, 46 + J13`
 - Loto 6/49: `1. 1, 7, 18, 27, 35, 49 + N6026250`
+- Wheel: Shows coverage info, then numbered tickets
 
-## Repository layout
+## Data Sources
 
-- `src/joker_model/` - Joker pipeline (parser, storage, strategies, metrics).
-- `src/loto_649_model/` - Loto 6/49 + Noroc pipeline.
-- `tests/` - unit tests and fixtures.
-- `docs/plans/` - design notes and implementation plans.
-- `data/` - cached HTML + CSV (created by scripts).
+- Joker results:
+  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html
+- Loto 6/49 + Noroc results:
+  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html
 
-## Limitations and ethics
+HTML is cached locally to avoid repeated downloads. Parsed draws are stored as CSV.
+
+## Repository Layout
+
+```
+src/
+├── joker_model/      # Joker pipeline (parser, storage, strategies)
+├── loto_649_model/   # Loto 6/49 + Noroc pipeline
+└── shared/           # Shared utilities
+    ├── math_utils.py     # Softmax, cross-entropy, matrix ops
+    ├── config.py         # Game configurations
+    ├── strategy_base.py  # Strategy protocol and base class
+    ├── neural_base.py    # MLP and LSTM implementations
+    ├── stats.py          # Statistical strategies
+    ├── ensemble.py       # Ensemble voting and selection
+    ├── backtest_base.py  # Backtesting framework
+    └── wheeling.py       # Wheeling systems
+
+tests/                # Unit tests (174 tests)
+docs/plans/           # Design notes and implementation plans
+data/                 # Cached HTML + CSV (created by scripts)
+scripts/              # CLI tools for generating picks
+```
+
+## Limitations and Ethics
 
 - Lottery outcomes are random; no model can guarantee wins.
 - This project is for research and disciplined experimentation.
