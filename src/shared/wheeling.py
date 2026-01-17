@@ -305,3 +305,253 @@ class KeyNumberWheel:
         """Estimate number of tickets for key wheel."""
         remaining_slots = self.numbers_per_line - len(self.key_numbers)
         return comb(other_numbers_count, remaining_slots)
+
+
+# Bluskov-style optimized wheels based on covering design theory
+
+
+def compute_coverage_lower_bound(
+    total_numbers: int, numbers_per_line: int, guarantee: int
+) -> int:
+    """Compute theoretical lower bound for wheel size.
+
+    Based on covering design theory: minimum tickets needed to cover
+    all guarantee-sized subcombinations.
+
+    Args:
+        total_numbers: Numbers in the wheel
+        numbers_per_line: Numbers per ticket
+        guarantee: Minimum match guarantee
+
+    Returns:
+        Theoretical minimum number of tickets
+    """
+    subcombos = comb(total_numbers, guarantee)
+    subcombos_per_ticket = comb(numbers_per_line, guarantee)
+    return max(1, subcombos // subcombos_per_ticket)
+
+
+def compute_coverage_statistics(
+    tickets: list[list[int]], numbers: list[int], guarantee: int
+) -> dict:
+    """Compute detailed coverage statistics for a wheel.
+
+    Args:
+        tickets: List of ticket lines
+        numbers: Numbers being wheeled
+        guarantee: Match level to analyze
+
+    Returns:
+        Dict with coverage statistics
+    """
+    # All sub-combinations that need coverage
+    required = set(
+        tuple(sorted(combo)) for combo in itertools.combinations(numbers, guarantee)
+    )
+
+    # Track coverage frequency
+    coverage_count: dict[tuple, int] = {r: 0 for r in required}
+    for ticket in tickets:
+        for subcombo in itertools.combinations(ticket, guarantee):
+            key = tuple(sorted(subcombo))
+            if key in coverage_count:
+                coverage_count[key] += 1
+
+    covered = {k for k, v in coverage_count.items() if v > 0}
+    uncovered = required - covered
+
+    # Coverage distribution
+    coverage_values = list(coverage_count.values())
+    avg_coverage = sum(coverage_values) / len(coverage_values) if coverage_values else 0
+    min_coverage = min(coverage_values) if coverage_values else 0
+    max_coverage = max(coverage_values) if coverage_values else 0
+
+    return {
+        "total_required": len(required),
+        "total_covered": len(covered),
+        "coverage_percent": len(covered) / len(required) * 100 if required else 100,
+        "is_complete": len(uncovered) == 0,
+        "uncovered_count": len(uncovered),
+        "avg_coverage": avg_coverage,
+        "min_coverage": min_coverage,
+        "max_coverage": max_coverage,
+        "theoretical_minimum": compute_coverage_lower_bound(
+            len(numbers), len(tickets[0]) if tickets else 6, guarantee
+        ),
+        "actual_tickets": len(tickets),
+        "efficiency": (
+            compute_coverage_lower_bound(
+                len(numbers), len(tickets[0]) if tickets else 6, guarantee
+            )
+            / len(tickets)
+            if tickets
+            else 0
+        ),
+    }
+
+
+def compute_number_balance(tickets: list[list[int]], numbers: list[int]) -> dict:
+    """Analyze how evenly numbers are distributed across tickets.
+
+    Args:
+        tickets: List of ticket lines
+        numbers: Numbers being wheeled
+
+    Returns:
+        Dict with balance statistics
+    """
+    counts = {n: 0 for n in numbers}
+    for ticket in tickets:
+        for n in ticket:
+            if n in counts:
+                counts[n] += 1
+
+    values = list(counts.values())
+    if not values:
+        return {"error": "No tickets to analyze"}
+
+    mean_count = sum(values) / len(values)
+    variance = sum((v - mean_count) ** 2 for v in values) / len(values)
+    std_dev = variance ** 0.5
+
+    return {
+        "mean_appearances": mean_count,
+        "std_dev": std_dev,
+        "coefficient_of_variation": std_dev / mean_count if mean_count > 0 else 0,
+        "min_appearances": min(values),
+        "max_appearances": max(values),
+        "least_appearing": [n for n, c in counts.items() if c == min(values)],
+        "most_appearing": [n for n, c in counts.items() if c == max(values)],
+        "is_balanced": std_dev < mean_count * 0.2,  # Within 20% variation
+    }
+
+
+class OptimizedWheelGenerator:
+    """Generate optimized wheels using improved algorithms.
+
+    Based on Professor Bluskov's research on combinatorial covering designs,
+    this generator uses heuristics to approach optimal wheel sizes.
+    """
+
+    def __init__(
+        self,
+        numbers_per_line: int,
+        guarantee: int,
+    ):
+        self.numbers_per_line = numbers_per_line
+        self.guarantee = guarantee
+
+    def generate(
+        self,
+        numbers: list[int],
+        max_tickets: int | None = None,
+        optimization_rounds: int = 3,
+    ) -> list[list[int]]:
+        """Generate an optimized wheel.
+
+        Uses multiple heuristics and selects the best result.
+
+        Args:
+            numbers: Numbers to wheel
+            max_tickets: Maximum tickets (None = no limit)
+            optimization_rounds: Number of optimization attempts
+
+        Returns:
+            List of ticket lines
+        """
+        if len(numbers) < self.numbers_per_line:
+            return []
+
+        best_tickets = None
+        best_size = float("inf")
+
+        # Try multiple approaches
+        for round_num in range(optimization_rounds):
+            # Greedy covering with different orderings
+            if round_num == 0:
+                # Standard greedy
+                tickets = self._greedy_cover(numbers)
+            elif round_num == 1:
+                # Reverse greedy (start from end)
+                tickets = self._greedy_cover(list(reversed(numbers)))
+            else:
+                # Random shuffle
+                import random
+
+                shuffled = list(numbers)
+                random.shuffle(shuffled)
+                tickets = self._greedy_cover(shuffled)
+
+            if max_tickets and len(tickets) > max_tickets:
+                tickets = tickets[:max_tickets]
+
+            if len(tickets) < best_size:
+                best_size = len(tickets)
+                best_tickets = tickets
+
+        return best_tickets or []
+
+    def _greedy_cover(self, numbers: list[int]) -> list[list[int]]:
+        """Standard greedy covering algorithm."""
+        subcombos_to_cover = set(
+            tuple(sorted(combo))
+            for combo in itertools.combinations(numbers, self.guarantee)
+        )
+
+        tickets = []
+        covered = set()
+
+        while covered != subcombos_to_cover:
+            best_ticket = None
+            best_count = 0
+
+            for ticket in itertools.combinations(numbers, self.numbers_per_line):
+                ticket_subcombos = set(
+                    tuple(sorted(s))
+                    for s in itertools.combinations(ticket, self.guarantee)
+                )
+                new_cover = ticket_subcombos - covered
+                if len(new_cover) > best_count:
+                    best_count = len(new_cover)
+                    best_ticket = ticket
+
+            if best_ticket is None or best_count == 0:
+                break
+
+            tickets.append(list(best_ticket))
+            ticket_subcombos = set(
+                tuple(sorted(s))
+                for s in itertools.combinations(best_ticket, self.guarantee)
+            )
+            covered |= ticket_subcombos
+
+        return tickets
+
+    def analyze(self, numbers: list[int]) -> dict:
+        """Analyze wheel characteristics before generation.
+
+        Args:
+            numbers: Numbers to wheel
+
+        Returns:
+            Analysis of wheel properties
+        """
+        n = len(numbers)
+        k = self.numbers_per_line
+        t = self.guarantee
+
+        full_wheel_size = comb(n, k)
+        min_wheel_size = compute_coverage_lower_bound(n, k, t)
+        estimated_wheel = int(min_wheel_size * 1.3)
+
+        return {
+            "total_numbers": n,
+            "numbers_per_ticket": k,
+            "guarantee": t,
+            "full_wheel_size": full_wheel_size,
+            "theoretical_minimum": min_wheel_size,
+            "estimated_abbreviated": estimated_wheel,
+            "reduction_factor": full_wheel_size / estimated_wheel if estimated_wheel > 0 else 1,
+            "subcombinations_to_cover": comb(n, t),
+            "subcombinations_per_ticket": comb(k, t),
+        }
