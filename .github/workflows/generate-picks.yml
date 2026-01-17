@@ -107,26 +107,26 @@ jobs:
           MESSAGE="🎰 *Lottery Picks - ${DATE}*"
           has_picks=false
 
-          if [ -f picks/joker.txt ]; then
-            has_picks=true
-            MESSAGE="${MESSAGE}"$'\n\n'"🃏 *JOKER*"$'\n```'"$'\n'"$(cat picks/joker.txt)"$'\n```'
-          fi
+          append_section() {
+            local label="$1"
+            local file="$2"
+            local content
+            content=$(cat "$file" 2>/dev/null || true)
+            if [ -n "$content" ]; then
+              has_picks=true
+              MESSAGE=$(printf '%s\n\n%s\n```\n%s\n```' "$MESSAGE" "$label" "$content")
+            fi
+          }
 
-          if [ -f picks/loto649.txt ]; then
-            has_picks=true
-            MESSAGE="${MESSAGE}"$'\n\n'"🎱 *LOTO 6/49*"$'\n```'"$'\n'"$(cat picks/loto649.txt)"$'\n```'
-          fi
-
-          if [ -f picks/loto540.txt ]; then
-            has_picks=true
-            MESSAGE="${MESSAGE}"$'\n\n'"🎯 *LOTO 5/40*"$'\n```'"$'\n'"$(cat picks/loto540.txt)"$'\n```'
-          fi
+          append_section "🃏 *JOKER*" "picks/joker.txt"
+          append_section "🎱 *LOTO 6/49*" "picks/loto649.txt"
+          append_section "🎯 *LOTO 5/40*" "picks/loto540.txt"
 
           if [ "$has_picks" = false ]; then
-            MESSAGE="${MESSAGE}"$'\n\n'"_No picks generated (all line counts set to 0)._"
+            MESSAGE=$(printf '%s\n\n_No picks generated (all line counts set to 0)._' "$MESSAGE")
           fi
 
-          MESSAGE="${MESSAGE}"$'\n\n'"_Generated with smart strategy_"$'\n'"_Results will be checked tomorrow morning_"
+          MESSAGE=$(printf '%s\n\n_Generated with smart strategy_\n_Results will be checked tomorrow morning_' "$MESSAGE")
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \

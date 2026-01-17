@@ -25,3 +25,8 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertNotIn('if [ -n "${{ steps.joker.outputs.PICKS }}"', self.text)
         self.assertNotIn('if [ -n "${{ steps.loto649.outputs.PICKS }}"', self.text)
         self.assertNotIn('if [ -n "${{ steps.loto540.outputs.PICKS }}"', self.text)
+
+    def test_telegram_step_avoids_inline_cat_for_missing_files(self):
+        self.assertNotIn("cat picks/joker.txt", self.text)
+        self.assertNotIn("cat picks/loto649.txt", self.text)
+        self.assertNotIn("cat picks/loto540.txt", self.text)
