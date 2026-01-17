@@ -204,6 +204,31 @@ Strategies apply exponential decay so newer draws influence scores more. The new
 - `draws` mode: half-life is measured in number of draws (assumes even spacing).
 - `days` mode: half-life is measured in calendar days between draw dates, so uneven gaps are handled correctly.
 
+### Educational EV Summary
+
+This is an educational snapshot using user-provided jackpots and explicit assumptions. It is not gambling advice.
+
+Solid Facts (No Assumptions Needed):
+- Expected value is negative for all three games at current jackpots (6/49: 16.24M lei, Joker: 47.99M lei, 5/40: 224K lei Cat I).
+- EV-optimal variants = 0 for both Thu and Sun (odds/prices identical by day).
+- Any-prize probabilities (per line): 6/49 ≈ 1.864%, Joker ≈ 5.622%, 5/40 ≈ 1.784%.
+
+Assumptions (User-Specified):
+- Lower-tier expected return as % of line price: 6/49 = 5%, Joker = 7%, 5/40 = 15%.
+- Single-winner jackpot (actual splits reduce EV further).
+- Slip fee 0.5 lei amortized per line.
+
+Net EV per Line (Under Assumptions):
+- 6/49: -6.94 lei (ROI -81.6%)
+- Joker: -5.05 lei (ROI -67.3%)
+- 5/40: -4.41 lei (ROI -80.2%)
+
+Implication (Assumption-Dependent):
+- Under these assumptions, Joker has the least-negative EV among the three.
+
+Cannot Compute Exactly (Data Gap):
+- Probability of net profit per N-line bundle requires exact payout tables (tier payouts or exact % per category).
+
 ### Reproducibility
 
 Fixed seed via argument:
@@ -281,3 +306,21 @@ scripts/              # CLI tools for generating picks
 - Lottery outcomes are random; no model can guarantee wins.
 - This project is for research and disciplined experimentation.
 - Use at your own risk; treat spending as entertainment, not investment.
+
+## IF YOU CHOOSE TO PLAY ANYWAY – PURCHASE GUIDE
+
+| Game  | Cost/Line | Slip Fee | Rec. Lines | Total Cost | Exp. Loss   | Break-Even Chance* |
+|-------|-----------|----------|------------|------------|-------------|--------------------|
+| 6/49  | 8.00 lei  | 0.50 lei | 1-5        | 8.50-40.50 | -6.94-34.70 | ~1-7%              |
+| Joker | 7.00 lei  | 0.50 lei | 1-10       | 7.50-70.50 | -5.05-50.50 | ~4-38%             |
+| 5/40  | 5.00 lei  | 0.50 lei | 1-3        | 5.50-15.50 | -4.41-13.23 | ~1-4%              |
+
+* Approximate chance of net profit (any prize > total spent), based on your lower-tier assumptions (5%/7%/15% return).
+
+RECOMMENDATION BY ENTERTAINMENT BUDGET:
+- Under 10 lei: 1 line Joker (7.50 lei, -5.05 expected loss, 4% break-even chance)
+- 10-40 lei: 5 lines Joker (35.50 lei, -25.25 loss, ~22% break-even) OR 1 line each game
+- 50+ lei: 10 lines Joker (70.50 lei, -50.50 loss, ~38% break-even) - still negative EV
+
+KEY INSIGHT:
+If you're buying a ticket anyway for fun, Joker gives you the most chances to hit something (5.6% vs 1.8% per line), so you'll feel the "entertainment value" more often than 6/49 or 5/40.
