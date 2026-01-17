@@ -18,11 +18,11 @@ This plan outlines a comprehensive strategy to significantly improve the lottery
 src/shared/game_config.py
 ```
 
-| Game | Pool | Pick | Draw |
-|------|------|------|------|
-| Joker | 1-45 | 5 | 5+Joker |
-| Loto 6/49 | 1-49 | 6 | 6 |
-| Loto 5/40 | 1-40 | 5 | 6 |
+| Game      | Pool | Pick | Draw    |
+|-----------|------|------|---------|
+| Joker     | 1-45 | 5    | 5+Joker |
+| Loto 6/49 | 1-49 | 6    | 6       |
+| Loto 5/40 | 1-40 | 5    | 6       |
 
 **Note**: Secondary numbers (Noroc, Super Noroc, Noroc Plus) removed to simplify the system and focus on main number prediction.
 
@@ -60,16 +60,16 @@ class BaseStrategy(Protocol):
 
 Add to `src/shared/features.py`:
 
-| Feature | Description | Rationale |
-|---------|-------------|-----------|
-| **Digit Frequency** | Frequency of digits 0-9 across all numbers | Detect visual patterns humans might follow |
-| **Prime Ratio** | % of prime numbers in each draw | Mathematical pattern detection |
-| **Modular Residues** | Distribution mod 2, 3, 5, 7, 10 | Reveals hidden periodicity |
-| **Position Transitions** | How numbers move between positions | Capture sequential dependencies |
-| **Entropy Score** | Shannon entropy of recent draws | Detect non-randomness |
-| **Autocorrelation** | Self-similarity at various lags | Time-series patterns |
-| **Gap Sequences** | Pattern of gaps between same number | Overdue number refinement |
-| **Cluster Detection** | Numbers that co-appear frequently | Network analysis |
+| Feature                  | Description                                | Rationale                                  |
+|--------------------------|--------------------------------------------|--------------------------------------------|
+| **Digit Frequency**      | Frequency of digits 0-9 across all numbers | Detect visual patterns humans might follow |
+| **Prime Ratio**          | % of prime numbers in each draw            | Mathematical pattern detection             |
+| **Modular Residues**     | Distribution mod 2, 3, 5, 7, 10            | Reveals hidden periodicity                 |
+| **Position Transitions** | How numbers move between positions         | Capture sequential dependencies            |
+| **Entropy Score**        | Shannon entropy of recent draws            | Detect non-randomness                      |
+| **Autocorrelation**      | Self-similarity at various lags            | Time-series patterns                       |
+| **Gap Sequences**        | Pattern of gaps between same number        | Overdue number refinement                  |
+| **Cluster Detection**    | Numbers that co-appear frequently          | Network analysis                           |
 
 ### 2.2 Joker Bonus Number Modeling (Joker game only)
 
@@ -126,13 +126,13 @@ def _backward_lstm(self, loss_grad, sequence_length):
 
 ### 3.3 Training Improvements
 
-| Improvement | Implementation |
-|-------------|----------------|
-| Learning rate decay | `lr = initial_lr * (0.95 ** epoch)` |
-| Early stopping | Monitor validation loss, stop if no improvement for 10 epochs |
-| Gradient clipping | `clip_grad_norm(gradients, max_norm=1.0)` |
-| Batch normalization | Normalize layer inputs |
-| Dropout simulation | Random zeroing during training |
+| Improvement         | Implementation                                                |
+|---------------------|---------------------------------------------------------------|
+| Learning rate decay | `lr = initial_lr * (0.95 ** epoch)`                           |
+| Early stopping      | Monitor validation loss, stop if no improvement for 10 epochs |
+| Gradient clipping   | `clip_grad_norm(gradients, max_norm=1.0)`                     |
+| Batch normalization | Normalize layer inputs                                        |
+| Dropout simulation  | Random zeroing during training                                |
 
 ### 3.4 New Architectures (Future)
 
@@ -195,13 +195,13 @@ def measure_diversity(self, strategy_predictions):
 
 ### 5.1 New Evaluation Metrics
 
-| Metric | Formula | Purpose |
-|--------|---------|---------|
-| **Tier Precision** | TP_tier / Predicted_tier | How often predicted tier matches? |
-| **Coverage Rate** | Unique_winning_covered / Total_draws | Diversification measure |
-| **Sharpe Analog** | (Return - Baseline) / StdDev(Return) | Risk-adjusted performance |
-| **Calmar Ratio** | CAGR / Max_Drawdown | Drawdown-adjusted return |
-| **Hit Rate by Tier** | Wins_at_tier / Total_predictions | Per-tier accuracy |
+| Metric               | Formula                              | Purpose                           |
+|----------------------|--------------------------------------|-----------------------------------|
+| **Tier Precision**   | TP_tier / Predicted_tier             | How often predicted tier matches? |
+| **Coverage Rate**    | Unique_winning_covered / Total_draws | Diversification measure           |
+| **Sharpe Analog**    | (Return - Baseline) / StdDev(Return) | Risk-adjusted performance         |
+| **Calmar Ratio**     | CAGR / Max_Drawdown                  | Drawdown-adjusted return          |
+| **Hit Rate by Tier** | Wins_at_tier / Total_predictions     | Per-tier accuracy                 |
 
 ### 5.2 Bootstrap Confidence Intervals
 
@@ -288,21 +288,21 @@ class DrawMonitor:
 
 ## Implementation Priority Matrix
 
-| Phase | Effort | Impact | Priority |
-|-------|--------|--------|----------|
-| 1.1 GameConfig | Medium | High | **P0** |
-| 1.2 Strategy Base | Medium | High | **P0** |
-| 2.1 New Features | High | Very High | **P1** |
-| 2.2 Joker Bonus | Low | Low | P3 |
-| 3.1 Integrate Neural | Medium | High | **P1** |
-| 3.2 Fix LSTM | High | Medium | P2 |
-| 3.3 Training Improvements | Medium | Medium | P2 |
-| 4.1 Advanced Ensemble | Medium | High | **P1** |
-| 4.2 Adaptive Weights | Medium | Medium | P2 |
-| 5.1 New Metrics | Low | Medium | P2 |
-| 5.2 Bootstrap CI | Low | Low | P3 |
-| 6.1 Optimal Wheels | High | Low | P3 |
-| 7.1 Extended Data | Medium | Medium | P2 |
+| Phase                     | Effort | Impact    | Priority |
+|---------------------------|--------|-----------|----------|
+| 1.1 GameConfig            | Medium | High      | **P0**   |
+| 1.2 Strategy Base         | Medium | High      | **P0**   |
+| 2.1 New Features          | High   | Very High | **P1**   |
+| 2.2 Joker Bonus           | Low    | Low       | P3       |
+| 3.1 Integrate Neural      | Medium | High      | **P1**   |
+| 3.2 Fix LSTM              | High   | Medium    | P2       |
+| 3.3 Training Improvements | Medium | Medium    | P2       |
+| 4.1 Advanced Ensemble     | Medium | High      | **P1**   |
+| 4.2 Adaptive Weights      | Medium | Medium    | P2       |
+| 5.1 New Metrics           | Low    | Medium    | P2       |
+| 5.2 Bootstrap CI          | Low    | Low       | P3       |
+| 6.1 Optimal Wheels        | High   | Low       | P3       |
+| 7.1 Extended Data         | Medium | Medium    | P2       |
 
 **Simplification**: Noroc, Super Noroc, and Noroc Plus have been removed from all games to focus on main number prediction.
 
@@ -363,12 +363,12 @@ class DrawMonitor:
 
 ## Risk Mitigation
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                             | Mitigation                                    |
+|----------------------------------|-----------------------------------------------|
 | Breaking changes during refactor | Comprehensive test suite, incremental changes |
-| Neural improvements don't help | A/B test against baseline, rollback if worse |
-| Overfitting to historical data | Cross-validation, holdout test set |
-| Complexity increases maintenance | Keep interfaces simple, document thoroughly |
+| Neural improvements don't help   | A/B test against baseline, rollback if worse  |
+| Overfitting to historical data   | Cross-validation, holdout test set            |
+| Complexity increases maintenance | Keep interfaces simple, document thoroughly   |
 
 ---
 

@@ -4,11 +4,11 @@ This document covers the specific rules, odds, and historical analysis of Romani
 
 ## Game Overview
 
-| Game | Main Pool | Secondary | Draws | Jackpot Odds |
-|------|-----------|-----------|-------|--------------|
-| Joker | 5 from 45 | 1 from 20 | Sun, Thu | 1:24,435,180 |
-| Loto 6/49 | 6 from 49 | - | Sun, Thu | 1:13,983,816 |
-| Loto 5/40 | 5 from 40 | - | Sun, Thu | 1:658,008 |
+| Game      | Main Pool | Secondary | Draws    | Jackpot Odds |
+|-----------|-----------|-----------|----------|--------------|
+| Joker     | 5 from 45 | 1 from 20 | Sun, Thu | 1:24,435,180 |
+| Loto 6/49 | 6 from 49 | -         | Sun, Thu | 1:13,983,816 |
+| Loto 5/40 | 5 from 40 | -         | Sun, Thu | 1:658,008    |
 
 ## Joker
 
@@ -22,15 +22,15 @@ This document covers the specific rules, odds, and historical analysis of Romani
 
 | Matches | Joker | Category | Approximate Prize |
 |---------|-------|----------|-------------------|
-| 5 | Yes | I | Jackpot |
-| 5 | No | II | ~50,000 RON |
-| 4 | Yes | III | ~5,000 RON |
-| 4 | No | IV | ~500 RON |
-| 3 | Yes | V | ~50 RON |
-| 3 | No | VI | ~10 RON |
-| 2 | Yes | VII | Free ticket |
-| 1 | Yes | VIII | Free ticket |
-| 0 | Yes | IX | Free ticket |
+| 5       | Yes   | I        | Jackpot           |
+| 5       | No    | II       | ~50,000 RON       |
+| 4       | Yes   | III      | ~5,000 RON        |
+| 4       | No    | IV       | ~500 RON          |
+| 3       | Yes   | V        | ~50 RON           |
+| 3       | No    | VI       | ~10 RON           |
+| 2       | Yes   | VII      | Free ticket       |
+| 1       | Yes   | VIII     | Free ticket       |
+| 0       | Yes   | IX       | Free ticket       |
 
 ### Probability Calculations
 
@@ -81,10 +81,10 @@ Based on loto.ro historical data:
 
 | Matches | Category | Approximate Prize |
 |---------|----------|-------------------|
-| 6 | I | Jackpot |
-| 5 | II | ~10,000 RON |
-| 4 | III | ~100 RON |
-| 3 | IV | ~10 RON |
+| 6       | I        | Jackpot           |
+| 5       | II       | ~10,000 RON       |
+| 4       | III      | ~100 RON          |
+| 3       | IV       | ~10 RON           |
 
 ### Probability Calculations
 
@@ -170,9 +170,9 @@ These patterns are **descriptive, not predictive**:
 
 | Matches | Category | Approximate Prize |
 |---------|----------|-------------------|
-| 5 of 6 | I | Jackpot |
-| 4 of 6 | II | ~500 RON |
-| 3 of 6 | III | ~20 RON |
+| 5 of 6  | I        | Jackpot           |
+| 4 of 6  | II       | ~500 RON          |
+| 3 of 6  | III      | ~20 RON           |
 
 ### Probability Calculations
 
@@ -263,37 +263,37 @@ date,n1,n2,n3,n4,n5,n6
 
 Assuming ticket cost 5 RON and typical prize pool:
 
-| Prize | Probability | Payout | EV Contribution |
-|-------|-------------|--------|-----------------|
-| 5+J | 0.000000041 | 5,000,000 | 0.20 |
-| 5 | 0.00000078 | 50,000 | 0.04 |
-| 4+J | 0.0000082 | 5,000 | 0.04 |
-| 4 | 0.000156 | 500 | 0.08 |
-| 3+J | 0.000236 | 50 | 0.01 |
-| 3 | 0.00449 | 10 | 0.04 |
+| Prize | Probability | Payout    | EV Contribution |
+|-------|-------------|-----------|-----------------|
+| 5+J   | 0.000000041 | 5,000,000 | 0.20            |
+| 5     | 0.00000078  | 50,000    | 0.04            |
+| 4+J   | 0.0000082   | 5,000     | 0.04            |
+| 4     | 0.000156    | 500       | 0.08            |
+| 3+J   | 0.000236    | 50        | 0.01            |
+| 3     | 0.00449     | 10        | 0.04            |
 
 **Total EV ≈ 0.41 RON per 5 RON ticket**
 **Expected loss: ~4.59 RON per ticket (~92% house edge)**
 
 ### Loto 6/49
 
-| Prize | Probability | Payout | EV Contribution |
-|-------|-------------|--------|-----------------|
-| 6 | 0.0000000715 | 5,000,000 | 0.36 |
-| 5 | 0.0000184 | 50,000 | 0.92 |
-| 4 | 0.000969 | 100 | 0.10 |
-| 3 | 0.0177 | 10 | 0.18 |
+| Prize | Probability  | Payout    | EV Contribution |
+|-------|--------------|-----------|-----------------|
+| 6     | 0.0000000715 | 5,000,000 | 0.36            |
+| 5     | 0.0000184    | 50,000    | 0.92            |
+| 4     | 0.000969     | 100       | 0.10            |
+| 3     | 0.0177       | 10        | 0.18            |
 
 **Total EV ≈ 1.56 RON per 3 RON ticket**
 **Expected loss: ~1.44 RON per ticket (~48% house edge)**
 
 ### Loto 5/40
 
-| Prize | Probability | Payout | EV Contribution |
-|-------|-------------|--------|-----------------|
-| 5 | 0.00000912 | 500,000 | 4.56 |
-| 4 | 0.000395 | 500 | 0.20 |
-| 3 | 0.0103 | 20 | 0.21 |
+| Prize | Probability | Payout  | EV Contribution |
+|-------|-------------|---------|-----------------|
+| 5     | 0.00000912  | 500,000 | 4.56            |
+| 4     | 0.000395    | 500     | 0.20            |
+| 3     | 0.0103      | 20      | 0.21            |
 
 **Total EV ≈ 4.97 RON per ticket** (varies with jackpot size)
 
@@ -388,25 +388,25 @@ PYTHONPATH=src python scripts/generate_loto_540_picks.py -s pattern -n 10
 
 ## Comparison with Other Lotteries
 
-| Lottery | Country | Pool | Pick | Jackpot Odds |
-|---------|---------|------|------|--------------|
-| Joker | Romania | 45+20 | 5+1 | 1:24M |
-| Loto 6/49 | Romania | 49 | 6 | 1:14M |
-| Loto 5/40 | Romania | 40 | 5/6 | 1:658K |
-| EuroMillions | Europe | 50+12 | 5+2 | 1:139M |
-| Powerball | USA | 69+26 | 5+1 | 1:292M |
-| UK Lotto | UK | 59 | 6 | 1:45M |
+| Lottery      | Country | Pool  | Pick | Jackpot Odds |
+|--------------|---------|-------|------|--------------|
+| Joker        | Romania | 45+20 | 5+1  | 1:24M        |
+| Loto 6/49    | Romania | 49    | 6    | 1:14M        |
+| Loto 5/40    | Romania | 40    | 5/6  | 1:658K       |
+| EuroMillions | Europe  | 50+12 | 5+2  | 1:139M       |
+| Powerball    | USA     | 69+26 | 5+1  | 1:292M       |
+| UK Lotto     | UK      | 59    | 6    | 1:45M        |
 
 Romanian lotteries have relatively better odds than major international lotteries, though expected value remains negative.
 
 ## Summary
 
-| Aspect | Joker | Loto 6/49 | Loto 5/40 |
-|--------|-------|-----------|-----------|
-| Best odds | | | X |
-| Largest jackpot | X | | |
-| Proven random | X | X | X |
-| EV (per ticket) | ~-92% | ~-48% | Varies |
+| Aspect          | Joker | Loto 6/49 | Loto 5/40 |
+|-----------------|-------|-----------|-----------|
+| Best odds       |       |           | X         |
+| Largest jackpot | X     |           |           |
+| Proven random   | X     | X         | X         |
+| EV (per ticket) | ~-92% | ~-48%     | Varies    |
 
 All three games are verified random and have negative expected value. Choose based on:
 - **Jackpot size**: Joker typically has largest

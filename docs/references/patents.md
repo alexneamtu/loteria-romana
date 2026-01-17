@@ -4,13 +4,13 @@ This document analyzes patents related to lottery prediction, number selection s
 
 ## Patent Landscape Overview
 
-| Patent | Focus | Method | Effectiveness |
-|--------|-------|--------|---------------|
-| US7909691B1 | Position-based selection | Statistical weighting | None proven |
-| US20060105830A1 | Quick-pick enhancement | Pattern matching | None proven |
-| KR101427233B1 | Data mining | Section prediction | None proven |
-| KR20100118042A | Trend analysis | Grouping patterns | None proven |
-| CN107408287A | Range prediction | Section analysis | None proven |
+| Patent          | Focus                    | Method                | Effectiveness |
+|-----------------|--------------------------|-----------------------|---------------|
+| US7909691B1     | Position-based selection | Statistical weighting | None proven   |
+| US20060105830A1 | Quick-pick enhancement   | Pattern matching      | None proven   |
+| KR101427233B1   | Data mining              | Section prediction    | None proven   |
+| KR20100118042A  | Trend analysis           | Grouping patterns     | None proven   |
+| CN107408287A    | Range prediction         | Section analysis      | None proven   |
 
 ## Detailed Patent Analysis
 
@@ -194,12 +194,12 @@ Patents are NOT evaluated for:
 
 ### Legal Protection vs. Scientific Merit
 
-| Patent Aspect | Legal Status | Scientific Status |
-|---------------|--------------|-------------------|
-| Novelty | Required and verified | Irrelevant |
-| Non-obviousness | Required and verified | Irrelevant |
-| Effectiveness | Not required | Required for claims |
-| Proof of improvement | Not required | Required for claims |
+| Patent Aspect        | Legal Status          | Scientific Status   |
+|----------------------|-----------------------|---------------------|
+| Novelty              | Required and verified | Irrelevant          |
+| Non-obviousness      | Required and verified | Irrelevant          |
+| Effectiveness        | Not required          | Required for claims |
+| Proof of improvement | Not required          | Required for claims |
 
 ## Common Patent Themes
 

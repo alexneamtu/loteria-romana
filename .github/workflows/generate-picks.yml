@@ -42,6 +42,9 @@ jobs:
       - name: Backfill latest historical draws
         run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
 
+      - name: Prepare picks directory
+        run: mkdir -p picks
+
       - name: Resolve line counts
         id: counts
         run: |
@@ -69,47 +72,24 @@ jobs:
 
       - name: Generate Joker picks
         if: ${{ steps.counts.outputs.joker_lines != '0' }}
-        id: joker
         run: |
-          {
-            echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n ${{ steps.counts.outputs.joker_lines }} --seed ${{ github.run_id }}
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
+          picks=$(PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n ${{ steps.counts.outputs.joker_lines }} --seed ${{ github.run_id }})
+          printf '%s\n' "$picks" > picks/joker.txt
 
       - name: Generate Loto 6/49 picks
         if: ${{ steps.counts.outputs.loto649_lines != '0' }}
-        id: loto649
         run: |
-          {
-            echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_loto_649_picks.py -s smart -n ${{ steps.counts.outputs.loto649_lines }} --seed ${{ github.run_id }}
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
+          picks=$(PYTHONPATH=src python scripts/generate_loto_649_picks.py -s smart -n ${{ steps.counts.outputs.loto649_lines }} --seed ${{ github.run_id }})
+          printf '%s\n' "$picks" > picks/loto649.txt
 
       - name: Generate Loto 5/40 picks
         if: ${{ steps.counts.outputs.loto540_lines != '0' }}
-        id: loto540
         run: |
-          {
-            echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_loto_540_picks.py -s smart -n ${{ steps.counts.outputs.loto540_lines }} --seed ${{ github.run_id }}
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
+          picks=$(PYTHONPATH=src python scripts/generate_loto_540_picks.py -s smart -n ${{ steps.counts.outputs.loto540_lines }} --seed ${{ github.run_id }})
+          printf '%s\n' "$picks" > picks/loto540.txt
 
-      - name: Save picks for later comparison
-        run: |
-          mkdir -p picks
-          if [ -n "${{ steps.joker.outputs.PICKS }}" ]; then
-            echo "${{ steps.joker.outputs.PICKS }}" > picks/joker.txt
-          fi
-          if [ -n "${{ steps.loto649.outputs.PICKS }}" ]; then
-            echo "${{ steps.loto649.outputs.PICKS }}" > picks/loto649.txt
-          fi
-          if [ -n "${{ steps.loto540.outputs.PICKS }}" ]; then
-            echo "${{ steps.loto540.outputs.PICKS }}" > picks/loto540.txt
-          fi
-          date +"%Y-%m-%d" > picks/date.txt
+      - name: Record picks date
+        run: date +"%Y-%m-%d" > picks/date.txt
 
       - name: Upload picks artifact
         uses: actions/upload-artifact@v4
@@ -125,20 +105,24 @@ jobs:
         run: |
           DATE=$(date +"%Y-%m-%d")
           MESSAGE="🎰 *Lottery Picks - ${DATE}*"
+          has_picks=false
 
-          if [ -n "${{ steps.joker.outputs.PICKS }}" ]; then
-            MESSAGE="${MESSAGE}"$'\n\n'"🃏 *JOKER*"$'\n```'"$'\n'"${{ steps.joker.outputs.PICKS }}"$'\n```'
+          if [ -f picks/joker.txt ]; then
+            has_picks=true
+            MESSAGE="${MESSAGE}"$'\n\n'"🃏 *JOKER*"$'\n```'"$'\n'"$(cat picks/joker.txt)"$'\n```'
           fi
 
-          if [ -n "${{ steps.loto649.outputs.PICKS }}" ]; then
-            MESSAGE="${MESSAGE}"$'\n\n'"🎱 *LOTO 6/49*"$'\n```'"$'\n'"${{ steps.loto649.outputs.PICKS }}"$'\n```'
+          if [ -f picks/loto649.txt ]; then
+            has_picks=true
+            MESSAGE="${MESSAGE}"$'\n\n'"🎱 *LOTO 6/49*"$'\n```'"$'\n'"$(cat picks/loto649.txt)"$'\n```'
           fi
 
-          if [ -n "${{ steps.loto540.outputs.PICKS }}" ]; then
-            MESSAGE="${MESSAGE}"$'\n\n'"🎯 *LOTO 5/40*"$'\n```'"$'\n'"${{ steps.loto540.outputs.PICKS }}"$'\n```'
+          if [ -f picks/loto540.txt ]; then
+            has_picks=true
+            MESSAGE="${MESSAGE}"$'\n\n'"🎯 *LOTO 5/40*"$'\n```'"$'\n'"$(cat picks/loto540.txt)"$'\n```'
           fi
 
-          if [ -z "${{ steps.joker.outputs.PICKS }}${{ steps.loto649.outputs.PICKS }}${{ steps.loto540.outputs.PICKS }}" ]; then
+          if [ "$has_picks" = false ]; then
             MESSAGE="${MESSAGE}"$'\n\n'"_No picks generated (all line counts set to 0)._"
           fi
 

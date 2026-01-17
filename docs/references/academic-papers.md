@@ -4,12 +4,12 @@ This document summarizes academic research on lottery prediction, statistical an
 
 ## Key Findings Summary
 
-| Study | Method | Result | Conclusion |
-|-------|--------|--------|------------|
-| Romanian 6/49 Study (2025) | Chi-square test | p=0.0766 | Random confirmed |
-| SmileyNet (ArXiv) | Deep neural network | No improvement | Random is random |
-| Lottery Prediction (GitHub) | 4-layer LSTM | "No patterns found" | ML cannot help |
-| SSRN Risk-Taking | Various ML | 53% accuracy | Barely above random |
+| Study                       | Method              | Result              | Conclusion          |
+|-----------------------------|---------------------|---------------------|---------------------|
+| Romanian 6/49 Study (2025)  | Chi-square test     | p=0.0766            | Random confirmed    |
+| SmileyNet (ArXiv)           | Deep neural network | No improvement      | Random is random    |
+| Lottery Prediction (GitHub) | 4-layer LSTM        | "No patterns found" | ML cannot help      |
+| SSRN Risk-Taking            | Various ML          | 53% accuracy        | Barely above random |
 
 ## Statistical Analysis Studies
 
@@ -214,12 +214,12 @@ Properly maintained lottery equipment produces statistically random draws.
 
 ### Statistical Tests Used by Lottery Commissions
 
-| Test | Purpose | Expectation |
-|------|---------|-------------|
-| Chi-square | Uniform distribution | p > 0.05 |
-| Runs test | Independence | p > 0.05 |
-| Serial correlation | No autocorrelation | r ≈ 0 |
-| Gap test | Interval randomness | p > 0.05 |
+| Test               | Purpose              | Expectation |
+|--------------------|----------------------|-------------|
+| Chi-square         | Uniform distribution | p > 0.05    |
+| Runs test          | Independence         | p > 0.05    |
+| Serial correlation | No autocorrelation   | r ≈ 0       |
+| Gap test           | Interval randomness  | p > 0.05    |
 
 ## Citation Summary
 
@@ -255,12 +255,12 @@ Properly maintained lottery equipment produces statistically random draws.
 
 ### What Hasn't Been Tried (And Won't Work)
 
-| Method | Status | Why It Won't Work |
-|--------|--------|-------------------|
-| Quantum computing | Not applicable | Random is random |
-| Chaos theory | Tried, failed | No deterministic system |
-| Astrology | Obviously wrong | Not science |
-| "Secret formulas" | Scam | Mathematics doesn't work that way |
+| Method            | Status          | Why It Won't Work                 |
+|-------------------|-----------------|-----------------------------------|
+| Quantum computing | Not applicable  | Random is random                  |
+| Chaos theory      | Tried, failed   | No deterministic system           |
+| Astrology         | Obviously wrong | Not science                       |
+| "Secret formulas" | Scam            | Mathematics doesn't work that way |
 
 ### Valid Research Directions
 

@@ -130,13 +130,13 @@ model = tf.keras.Sequential([
 
 ### Warning Signs
 
-| Red Flag | What It Means |
-|----------|---------------|
-| "Guaranteed wins" | Impossible claim |
-| "Secret formula" | No validation possible |
-| "Past winners used this" | Survivorship bias |
-| Subscription required | Recurring revenue, not results |
-| Testimonials only | No statistical evidence |
+| Red Flag                 | What It Means                  |
+|--------------------------|--------------------------------|
+| "Guaranteed wins"        | Impossible claim               |
+| "Secret formula"         | No validation possible         |
+| "Past winners used this" | Survivorship bias              |
+| Subscription required    | Recurring revenue, not results |
+| Testimonials only        | No statistical evidence        |
 
 ### Types of Systems to Avoid
 
@@ -169,11 +169,11 @@ Before purchasing any lottery system:
 
 ### Historical Databases
 
-| Source | Coverage | Format | Access |
-|--------|----------|--------|--------|
-| loto.ro | Romania | HTML | Free |
-| lottery.com | Multiple | API | Subscription |
-| lottolyzer.com | Multiple | Web | Free (limited) |
+| Source         | Coverage | Format | Access         |
+|----------------|----------|--------|----------------|
+| loto.ro        | Romania  | HTML   | Free           |
+| lottery.com    | Multiple | API    | Subscription   |
+| lottolyzer.com | Multiple | Web    | Free (limited) |
 
 ### API Services
 
@@ -197,11 +197,11 @@ Most lottery data APIs require:
 
 ### Online Wheel Generators
 
-| Site | Features | Quality |
-|------|----------|---------|
-| covermaster.com | Commercial wheels | High |
-| lotterypost.com | Free wheel generator | Medium |
-| smartluck.com | Commercial system | Medium |
+| Site            | Features             | Quality |
+|-----------------|----------------------|---------|
+| covermaster.com | Commercial wheels    | High    |
+| lotterypost.com | Free wheel generator | Medium  |
+| smartluck.com   | Commercial system    | Medium  |
 
 **Recommendation:** Use this codebase's built-in wheeling (`--wheel` flag)
 
@@ -240,27 +240,27 @@ jarque.bera.test(lottery_sums)
 
 ### Books
 
-| Title | Author | Topic |
-|-------|--------|-------|
-| The Drunkard's Walk | Leonard Mlodinow | Randomness |
-| Fooled by Randomness | Nassim Taleb | Probability illusions |
-| How to Lie with Statistics | Darrell Huff | Statistical deception |
+| Title                      | Author           | Topic                 |
+|----------------------------|------------------|-----------------------|
+| The Drunkard's Walk        | Leonard Mlodinow | Randomness            |
+| Fooled by Randomness       | Nassim Taleb     | Probability illusions |
+| How to Lie with Statistics | Darrell Huff     | Statistical deception |
 
 ### Online Courses
 
-| Platform | Course | Relevance |
-|----------|--------|-----------|
-| Khan Academy | Probability | Foundation |
-| Coursera | Statistics | Methodology |
-| MIT OCW | Probability Theory | Advanced |
+| Platform     | Course             | Relevance   |
+|--------------|--------------------|-------------|
+| Khan Academy | Probability        | Foundation  |
+| Coursera     | Statistics         | Methodology |
+| MIT OCW      | Probability Theory | Advanced    |
 
 ### Academic Journals
 
-| Journal | Focus |
-|---------|-------|
-| Journal of Gambling Studies | Gambling research |
-| Annals of Probability | Probability theory |
-| Combinatorica | Covering designs |
+| Journal                     | Focus              |
+|-----------------------------|--------------------|
+| Journal of Gambling Studies | Gambling research  |
+| Annals of Probability       | Probability theory |
+| Combinatorica               | Covering designs   |
 
 ## Community Resources
 
@@ -275,32 +275,32 @@ Most lottery forums promote:
 
 ### Reddit Communities
 
-| Subreddit | Content | Quality |
-|-----------|---------|---------|
-| r/statistics | Statistical questions | High |
-| r/MachineLearning | ML discussion | High |
-| r/lottery | Lottery discussion | Mixed |
+| Subreddit         | Content               | Quality |
+|-------------------|-----------------------|---------|
+| r/statistics      | Statistical questions | High    |
+| r/MachineLearning | ML discussion         | High    |
+| r/lottery         | Lottery discussion    | Mixed   |
 
 ### Stack Exchange
 
-| Site | Use For |
-|------|---------|
+| Site            | Use For              |
+|-----------------|----------------------|
 | Cross Validated | Statistics questions |
-| Stack Overflow | Implementation help |
-| Mathematics | Probability theory |
+| Stack Overflow  | Implementation help  |
+| Mathematics     | Probability theory   |
 
 ## This Codebase vs. Alternatives
 
 ### Comparison
 
-| Feature | This Codebase | Commercial | GitHub Projects |
-|---------|--------------|------------|-----------------|
-| Open source | Yes | No | Varies |
-| Honest about limitations | Yes | No | Sometimes |
-| Dependencies | None (stdlib) | Various | Many |
-| Romanian focus | Yes | Usually no | No |
-| Wheeling | Yes | Yes | Rarely |
-| Backtesting | Yes | Rarely | Sometimes |
+| Feature                  | This Codebase | Commercial | GitHub Projects |
+|--------------------------|---------------|------------|-----------------|
+| Open source              | Yes           | No         | Varies          |
+| Honest about limitations | Yes           | No         | Sometimes       |
+| Dependencies             | None (stdlib) | Various    | Many            |
+| Romanian focus           | Yes           | Usually no | No              |
+| Wheeling                 | Yes           | Yes        | Rarely          |
+| Backtesting              | Yes           | Rarely     | Sometimes       |
 
 ### Unique Features
 

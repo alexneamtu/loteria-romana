@@ -14,12 +14,12 @@ If you believe 10 numbers will include the 6 winners, a wheel can guarantee:
 
 ## Types of Wheels
 
-| Type | Description | Tickets | Coverage |
-|------|-------------|---------|----------|
-| Full Wheel | All combinations | C(n,k) | Complete |
-| Abbreviated Wheel | Subset with guarantee | Reduced | Guaranteed minimum |
-| Key Number Wheel | Fixed numbers in all tickets | Reduced | Key-dependent |
-| Balanced Wheel | Equal number coverage | Target count | Balanced |
+| Type              | Description                  | Tickets      | Coverage           |
+|-------------------|------------------------------|--------------|--------------------|
+| Full Wheel        | All combinations             | C(n,k)       | Complete           |
+| Abbreviated Wheel | Subset with guarantee        | Reduced      | Guaranteed minimum |
+| Key Number Wheel  | Fixed numbers in all tickets | Reduced      | Key-dependent      |
+| Balanced Wheel    | Equal number coverage        | Target count | Balanced           |
 
 ## Mathematical Foundation
 
@@ -58,12 +58,12 @@ Tickets = C(n, k) = n! / (k! × (n-k)!)
 
 | Numbers | Per Ticket | Tickets |
 |---------|------------|---------|
-| 7 | 6 | 7 |
-| 8 | 6 | 28 |
-| 9 | 6 | 84 |
-| 10 | 6 | 210 |
-| 12 | 6 | 924 |
-| 15 | 6 | 5,005 |
+| 7       | 6          | 7       |
+| 8       | 6          | 28      |
+| 9       | 6          | 84      |
+| 10      | 6          | 210     |
+| 12      | 6          | 924     |
+| 15      | 6          | 5,005   |
 
 ### Implementation
 
@@ -125,12 +125,12 @@ Abbreviated wheel: ~15-20 tickets
 
 ### Trade-off
 
-| Guarantee | Typical Reduction | What You Lose |
-|-----------|-------------------|---------------|
-| 6-if-6 | 0% (full wheel) | Nothing |
-| 5-if-6 | 40-60% | Some 6-match scenarios |
-| 4-if-6 | 80-90% | Some 5+ match scenarios |
-| 3-if-6 | 95%+ | Most higher match scenarios |
+| Guarantee | Typical Reduction | What You Lose               |
+|-----------|-------------------|-----------------------------|
+| 6-if-6    | 0% (full wheel)   | Nothing                     |
+| 5-if-6    | 40-60%            | Some 6-match scenarios      |
+| 4-if-6    | 80-90%            | Some 5+ match scenarios     |
+| 3-if-6    | 95%+              | Most higher match scenarios |
 
 ## Key Number Wheel
 
@@ -266,11 +266,11 @@ Key contributions:
 
 ### Greedy vs Optimal
 
-| Approach | Tickets | Computation | Quality |
-|----------|---------|-------------|---------|
-| Greedy | ~30% above optimal | Fast | Good |
-| Optimal | Minimum possible | Slow (NP-hard) | Best |
-| Heuristic | ~10-20% above optimal | Medium | Very Good |
+| Approach  | Tickets               | Computation    | Quality   |
+|-----------|-----------------------|----------------|-----------|
+| Greedy    | ~30% above optimal    | Fast           | Good      |
+| Optimal   | Minimum possible      | Slow (NP-hard) | Best      |
+| Heuristic | ~10-20% above optimal | Medium         | Very Good |
 
 ## Practical Wheel Examples
 
@@ -332,10 +332,10 @@ Coverage: 100% of 4-number combinations
 
 Wheeling does NOT improve jackpot odds proportionally.
 
-| Without Wheel | With 10-number Wheel |
-|---------------|---------------------|
-| 1 in 13,983,816 | ~210 in 13,983,816 |
-| 1 ticket | 210 tickets |
+| Without Wheel        | With 10-number Wheel |
+|----------------------|----------------------|
+| 1 in 13,983,816      | ~210 in 13,983,816   |
+| 1 ticket             | 210 tickets          |
 | Same odds per ticket | Same odds per ticket |
 
 **You're buying more tickets, not getting better odds per ticket.**
@@ -344,11 +344,11 @@ Wheeling does NOT improve jackpot odds proportionally.
 
 Where wheels DO help:
 
-| Scenario | Without Wheel | With 4-if-6 Wheel |
-|----------|---------------|-------------------|
-| 6 of your 10 win | Maybe 6 matches | Guaranteed ≥4 |
-| 5 of your 10 win | Maybe 5 matches | Likely ≥3 |
-| 4 of your 10 win | Maybe 4 matches | Possible ≥3 |
+| Scenario         | Without Wheel   | With 4-if-6 Wheel |
+|------------------|-----------------|-------------------|
+| 6 of your 10 win | Maybe 6 matches | Guaranteed ≥4     |
+| 5 of your 10 win | Maybe 5 matches | Likely ≥3         |
+| 4 of your 10 win | Maybe 4 matches | Possible ≥3       |
 
 ### Break-Even Analysis
 
@@ -379,12 +379,12 @@ This rarely works out due to:
 
 ## Summary
 
-| Wheel Type | Tickets | Guarantee | Best For |
-|------------|---------|-----------|----------|
-| Full | All C(n,k) | Maximum | Small n |
-| Abbreviated | Reduced | Specified minimum | Medium n |
-| Key Number | Reduced | Key-dependent | High confidence numbers |
-| Balanced | Target count | Even coverage | Fair distribution |
+| Wheel Type  | Tickets      | Guarantee         | Best For                |
+|-------------|--------------|-------------------|-------------------------|
+| Full        | All C(n,k)   | Maximum           | Small n                 |
+| Abbreviated | Reduced      | Specified minimum | Medium n                |
+| Key Number  | Reduced      | Key-dependent     | High confidence numbers |
+| Balanced    | Target count | Even coverage     | Fair distribution       |
 
 ### The Honest Truth About Wheels
 

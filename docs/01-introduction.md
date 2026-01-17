@@ -92,12 +92,12 @@ Odds: 1 in 658,008
 
 ### Loto 6/49 Prize Tiers
 
-| Matches | Probability | Approximate Odds |
-|---------|-------------|-----------------|
-| 6 | 1/13,983,816 | 1 in 14 million |
-| 5 | 258/13,983,816 | 1 in 54,201 |
-| 4 | 13,545/13,983,816 | 1 in 1,032 |
-| 3 | 246,820/13,983,816 | 1 in 57 |
+| Matches | Probability        | Approximate Odds |
+|---------|--------------------|------------------|
+| 6       | 1/13,983,816       | 1 in 14 million  |
+| 5       | 258/13,983,816     | 1 in 54,201      |
+| 4       | 13,545/13,983,816  | 1 in 1,032       |
+| 3       | 246,820/13,983,816 | 1 in 57          |
 
 **Probability of matching exactly k numbers:**
 ```
@@ -106,14 +106,14 @@ P(k matches) = C(6,k) × C(43, 6-k) / C(49, 6)
 
 ### Joker Prize Tiers
 
-| Main Matches | Joker | Probability |
-|--------------|-------|-------------|
-| 5 | Yes | 1 in 24,435,180 |
-| 5 | No | 1 in 1,286,062 |
-| 4 | Yes | 1 in 122,176 |
-| 4 | No | 1 in 6,430 |
-| 3 | Yes | 1 in 4,235 |
-| 3 | No | 1 in 223 |
+| Main Matches | Joker | Probability     |
+|--------------|-------|-----------------|
+| 5            | Yes   | 1 in 24,435,180 |
+| 5            | No    | 1 in 1,286,062  |
+| 4            | Yes   | 1 in 122,176    |
+| 4            | No    | 1 in 6,430      |
+| 3            | Yes   | 1 in 4,235      |
+| 3            | No    | 1 in 223        |
 
 ## Expected Value Analysis
 
@@ -129,12 +129,12 @@ EV = Σ (probability_i × payout_i) - ticket_cost
 
 Assuming ticket costs 5 RON and jackpot is 5,000,000 RON:
 
-| Prize | Probability | Payout | Contribution |
-|-------|-------------|--------|--------------|
-| 6 match | 0.0000000715 | 5,000,000 | 0.36 |
-| 5 match | 0.0000184 | 50,000 | 0.92 |
-| 4 match | 0.000969 | 500 | 0.48 |
-| 3 match | 0.0177 | 25 | 0.44 |
+| Prize   | Probability  | Payout    | Contribution |
+|---------|--------------|-----------|--------------|
+| 6 match | 0.0000000715 | 5,000,000 | 0.36         |
+| 5 match | 0.0000184    | 50,000    | 0.92         |
+| 4 match | 0.000969     | 500       | 0.48         |
+| 3 match | 0.0177       | 25        | 0.44         |
 
 **Total EV = 0.36 + 0.92 + 0.48 + 0.44 - 5.00 = -2.80 RON**
 
@@ -247,14 +247,14 @@ Given that prediction is impossible, why does this codebase exist?
 
 ## Summary
 
-| Concept | Key Point |
-|---------|-----------|
-| Randomness | Lottery draws are designed to be truly random |
-| Independence | Each draw has no memory of previous draws |
-| Expected Value | Always negative for the player |
-| Prediction | Mathematically impossible for random processes |
-| House Edge | ~40-50% of ticket sales go to overhead, not prizes |
-| Approach | Treat lottery as entertainment, not investment |
+| Concept        | Key Point                                          |
+|----------------|----------------------------------------------------|
+| Randomness     | Lottery draws are designed to be truly random      |
+| Independence   | Each draw has no memory of previous draws          |
+| Expected Value | Always negative for the player                     |
+| Prediction     | Mathematically impossible for random processes     |
+| House Edge     | ~40-50% of ticket sales go to overhead, not prizes |
+| Approach       | Treat lottery as entertainment, not investment     |
 
 ## Next Steps
 

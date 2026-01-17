@@ -35,11 +35,11 @@ The conditional probability equals the unconditional probability because there i
 
 Unlike stock markets or weather, there are no hidden causal factors:
 
-| System | Hidden Variables | Predictable? |
-|--------|------------------|--------------|
-| Weather | Temperature, pressure, humidity | Partially |
-| Stocks | Economic factors, sentiment | Partially |
-| Lottery | None (by design) | No |
+| System  | Hidden Variables                | Predictable? |
+|---------|---------------------------------|--------------|
+| Weather | Temperature, pressure, humidity | Partially    |
+| Stocks  | Economic factors, sentiment     | Partially    |
+| Lottery | None (by design)                | No           |
 
 ## Common Misconceptions
 
@@ -105,13 +105,13 @@ If 10 million people flip coins, some will get 20 heads in a row. They didn't "f
 
 ### What It Does
 
-| Feature | Value | Limitation |
-|---------|-------|------------|
-| Structured selection | Makes picking organized | Doesn't improve odds |
-| Historical analysis | Educational insight | Not predictive |
-| Wheeling systems | Mathematical guarantees | Still negative EV |
-| Backtesting | Strategy comparison | Shows no strategy works |
-| Data pipeline | Automated data collection | Just convenience |
+| Feature              | Value                     | Limitation              |
+|----------------------|---------------------------|-------------------------|
+| Structured selection | Makes picking organized   | Doesn't improve odds    |
+| Historical analysis  | Educational insight       | Not predictive          |
+| Wheeling systems     | Mathematical guarantees   | Still negative EV       |
+| Backtesting          | Strategy comparison       | Shows no strategy works |
+| Data pipeline        | Automated data collection | Just convenience        |
 
 ### What It Doesn't Do
 
@@ -125,21 +125,21 @@ If 10 million people flip coins, some will get 20 heads in a row. They didn't "f
 
 ### Per Ticket Expected Value
 
-| Game | Ticket Cost | Expected Return | Expected Loss |
-|------|-------------|-----------------|---------------|
-| Joker | 5 RON | ~0.50 RON | ~4.50 RON (90%) |
-| 6/49 | 3 RON | ~1.50 RON | ~1.50 RON (50%) |
-| 5/40 | 2 RON | ~1.00 RON | ~1.00 RON (50%) |
+| Game  | Ticket Cost | Expected Return | Expected Loss   |
+|-------|-------------|-----------------|-----------------|
+| Joker | 5 RON       | ~0.50 RON       | ~4.50 RON (90%) |
+| 6/49  | 3 RON       | ~1.50 RON       | ~1.50 RON (50%) |
+| 5/40  | 2 RON       | ~1.00 RON       | ~1.00 RON (50%) |
 
 ### Long-Term Expectations
 
 Playing 2 tickets per draw, 2 draws per week:
 
-| Time Period | Tickets | Spent | Expected Return | Expected Loss |
-|-------------|---------|-------|-----------------|---------------|
-| 1 month | 16 | ~70 RON | ~35 RON | ~35 RON |
-| 1 year | 208 | ~900 RON | ~450 RON | ~450 RON |
-| 10 years | 2,080 | ~9,000 RON | ~4,500 RON | ~4,500 RON |
+| Time Period | Tickets | Spent      | Expected Return | Expected Loss |
+|-------------|---------|------------|-----------------|---------------|
+| 1 month     | 16      | ~70 RON    | ~35 RON         | ~35 RON       |
+| 1 year      | 208     | ~900 RON   | ~450 RON        | ~450 RON      |
+| 10 years    | 2,080   | ~9,000 RON | ~4,500 RON      | ~4,500 RON    |
 
 **You should expect to lose approximately half of all money spent on lottery tickets over time.**
 

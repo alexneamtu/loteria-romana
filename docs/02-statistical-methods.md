@@ -4,15 +4,15 @@ This document covers classical statistical approaches to lottery number selectio
 
 ## Overview of Methods
 
-| Method | Basis | Implementation | Effectiveness |
-|--------|-------|----------------|---------------|
+| Method             | Basis                        | Implementation                  | Effectiveness         |
+|--------------------|------------------------------|---------------------------------|-----------------------|
 | Frequency Analysis | Historical occurrence counts | `src/shared/game_strategies.py` | None (for prediction) |
-| Hot/Cold Numbers | Time-weighted frequency | `src/shared/stats.py` | None (for prediction) |
-| Delta Analysis | Gap distributions | `src/shared/stats.py` | None (for prediction) |
-| Sum Constraints | Normal distribution of sums | `src/shared/stats.py` | None (for prediction) |
-| Pair Correlation | Co-occurrence patterns | `src/shared/stats.py` | None (for prediction) |
-| Skip/Gap Analysis | Time since appearance | `src/shared/stats.py` | None (for prediction) |
-| Balance Strategy | Odd/even, high/low ratios | `src/shared/stats.py` | None (for prediction) |
+| Hot/Cold Numbers   | Time-weighted frequency      | `src/shared/stats.py`           | None (for prediction) |
+| Delta Analysis     | Gap distributions            | `src/shared/stats.py`           | None (for prediction) |
+| Sum Constraints    | Normal distribution of sums  | `src/shared/stats.py`           | None (for prediction) |
+| Pair Correlation   | Co-occurrence patterns       | `src/shared/stats.py`           | None (for prediction) |
+| Skip/Gap Analysis  | Time since appearance        | `src/shared/stats.py`           | None (for prediction) |
+| Balance Strategy   | Odd/even, high/low ratios    | `src/shared/stats.py`           | None (for prediction) |
 
 ## Frequency Analysis
 
@@ -371,17 +371,17 @@ Combining multiple ineffective predictors doesn't create an effective predictor.
 
 ## Summary Table
 
-| Method | Mathematical Basis | Complexity | Prediction Value |
-|--------|-------------------|------------|------------------|
-| Frequency | Count / Total | O(n) | Zero |
-| Hot/Cold | Exponential decay | O(n) | Zero |
-| Delta | Gap distribution | O(n) | Zero |
-| Sum | Normal distribution | O(1) filter | Zero |
-| Pairs | Co-occurrence | O(n²) | Zero |
-| Skip/Gap | Time since seen | O(n) | Zero |
-| Balance | Category ratios | O(1) filter | Zero |
-| Position | Sorted position | O(n × k) | Zero |
-| Composite | Weighted average | O(n) | Zero |
+| Method    | Mathematical Basis  | Complexity  | Prediction Value |
+|-----------|---------------------|-------------|------------------|
+| Frequency | Count / Total       | O(n)        | Zero             |
+| Hot/Cold  | Exponential decay   | O(n)        | Zero             |
+| Delta     | Gap distribution    | O(n)        | Zero             |
+| Sum       | Normal distribution | O(1) filter | Zero             |
+| Pairs     | Co-occurrence       | O(n²)       | Zero             |
+| Skip/Gap  | Time since seen     | O(n)        | Zero             |
+| Balance   | Category ratios     | O(1) filter | Zero             |
+| Position  | Sorted position     | O(n × k)    | Zero             |
+| Composite | Weighted average    | O(n)        | Zero             |
 
 ## The Fundamental Problem
 

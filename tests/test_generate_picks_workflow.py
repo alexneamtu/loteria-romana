@@ -20,3 +20,8 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertIn("steps.counts.outputs.joker_lines", self.text)
         self.assertIn("steps.counts.outputs.loto649_lines", self.text)
         self.assertIn("steps.counts.outputs.loto540_lines", self.text)
+
+    def test_outputs_not_used_in_shell_conditionals(self):
+        self.assertNotIn('if [ -n "${{ steps.joker.outputs.PICKS }}"', self.text)
+        self.assertNotIn('if [ -n "${{ steps.loto649.outputs.PICKS }}"', self.text)
+        self.assertNotIn('if [ -n "${{ steps.loto540.outputs.PICKS }}"', self.text)
