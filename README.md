@@ -4,7 +4,7 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 
 ## What this is / isn't
 
-- This is a loto.ro-only pipeline for Joker and Loto 6/49 + Noroc.
+- This is a loto.ro-only pipeline for Joker, Loto 6/49 + Noroc, and Loto 5/40 + Super Noroc.
 - It is an experiment in sampling strategies and statistical modeling.
 - It does not improve expected value; lottery outcomes remain random.
 - It is not a predictor and not financial advice.
@@ -14,6 +14,7 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 - Target games:
   - **Joker** (main numbers 1-45, Joker 1-20)
   - **Loto 6/49 + Noroc** (main numbers 1-49, Noroc 7-digit number, optional)
+  - **Loto 5/40 + Super Noroc** (6 numbers drawn from 1-40, player picks 5, Super Noroc 6-digit number, optional)
 - Data source: official results pages on loto.ro.
 - Out of scope: other lotteries/games.
 
@@ -68,6 +69,12 @@ Generate 2 Loto 6/49 picks:
 PYTHONPATH=src python scripts/generate_loto_649_picks.py
 ```
 
+Generate 2 Loto 5/40 picks:
+
+```bash
+PYTHONPATH=src python scripts/generate_loto_540_picks.py
+```
+
 ### Strategy Selection
 
 Use a specific strategy:
@@ -101,6 +108,7 @@ PYTHONPATH=src python scripts/generate_loto_649_picks.py --wheel 12 --wheel-guar
 --wheel N              Generate wheeling system with N numbers
 --wheel-guarantee N    Minimum match guarantee for wheeling
 --no-noroc             Omit Noroc from Loto 6/49 picks
+--no-super-noroc       Omit Super Noroc from Loto 5/40 picks
 ```
 
 ### Reproducibility
@@ -116,12 +124,14 @@ Or via environment variable:
 ```bash
 JOKER_SEED=123 PYTHONPATH=src python scripts/generate_joker_picks.py
 LOTO_649_SEED=123 PYTHONPATH=src python scripts/generate_loto_649_picks.py
+LOTO_540_SEED=123 PYTHONPATH=src python scripts/generate_loto_540_picks.py
 ```
 
 ### Output Format
 
 - Joker: `1. 7, 11, 44, 45, 46 + J13`
 - Loto 6/49: `1. 1, 7, 18, 27, 35, 49 + N6026250`
+- Loto 5/40: `1. 3, 4, 7, 20, 36 + SN626628`
 - Wheel: Shows coverage info, then numbered tickets
 
 ## Data Sources
@@ -130,6 +140,8 @@ LOTO_649_SEED=123 PYTHONPATH=src python scripts/generate_loto_649_picks.py
   - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html
 - Loto 6/49 + Noroc results:
   - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html
+- Loto 5/40 + Super Noroc results:
+  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/540_si_super_noroc/rezultate_extrageri.html
 
 HTML is cached locally to avoid repeated downloads. Parsed draws are stored as CSV.
 
@@ -139,6 +151,7 @@ HTML is cached locally to avoid repeated downloads. Parsed draws are stored as C
 src/
 ├── joker_model/      # Joker pipeline (parser, storage, strategies)
 ├── loto_649_model/   # Loto 6/49 + Noroc pipeline
+├── loto_540_model/   # Loto 5/40 + Super Noroc pipeline
 └── shared/           # Shared utilities
     ├── math_utils.py     # Softmax, cross-entropy, matrix ops
     ├── config.py         # Game configurations

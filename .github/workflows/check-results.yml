@@ -66,13 +66,18 @@ jobs:
           JOKER_WINNING=$(echo "$output" | grep "^JOKER_WINNING=" | cut -d= -f2-)
           LOTO_DATE=$(echo "$output" | grep "^LOTO_DATE=" | cut -d= -f2-)
           LOTO_WINNING=$(echo "$output" | grep "^LOTO_WINNING=" | cut -d= -f2-)
+          LOTO540_DATE=$(echo "$output" | grep "^LOTO540_DATE=" | cut -d= -f2-)
+          LOTO540_WINNING=$(echo "$output" | grep "^LOTO540_WINNING=" | cut -d= -f2-)
           JOKER_RESULTS=$(echo "$output" | grep "^JOKER_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
           LOTO_RESULTS=$(echo "$output" | grep "^LOTO_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
+          LOTO540_RESULTS=$(echo "$output" | grep "^LOTO540_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
 
           echo "JOKER_DATE=${JOKER_DATE}" >> $GITHUB_OUTPUT
           echo "JOKER_WINNING=${JOKER_WINNING}" >> $GITHUB_OUTPUT
           echo "LOTO_DATE=${LOTO_DATE}" >> $GITHUB_OUTPUT
           echo "LOTO_WINNING=${LOTO_WINNING}" >> $GITHUB_OUTPUT
+          echo "LOTO540_DATE=${LOTO540_DATE}" >> $GITHUB_OUTPUT
+          echo "LOTO540_WINNING=${LOTO540_WINNING}" >> $GITHUB_OUTPUT
 
           {
             echo 'JOKER_RESULTS<<EOF'
@@ -83,6 +88,12 @@ jobs:
           {
             echo 'LOTO_RESULTS<<EOF'
             echo "${LOTO_RESULTS}"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo 'LOTO540_RESULTS<<EOF'
+            echo "${LOTO540_RESULTS}"
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
@@ -104,6 +115,12 @@ jobs:
 
           Your picks:
           ${{ steps.results.outputs.LOTO_RESULTS }}
+
+          🎯 *LOTO 5/40* (${{ steps.results.outputs.LOTO540_DATE }})
+          Winning: ${{ steps.results.outputs.LOTO540_WINNING }}
+
+          Your picks:
+          ${{ steps.results.outputs.LOTO540_RESULTS }}
 
           _Better luck next time! 🍀_"
 

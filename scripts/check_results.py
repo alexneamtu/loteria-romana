@@ -14,6 +14,8 @@ from joker_model.fetch import update_dataset as update_joker
 from joker_model.storage import load_draws as load_joker
 from loto_649_model.fetch import update_dataset as update_loto649
 from loto_649_model.storage import load_draws as load_loto649
+from loto_540_model.fetch import update_dataset as update_loto540
+from loto_540_model.storage import load_draws as load_loto540
 
 
 def log(msg: str) -> None:
@@ -66,6 +68,8 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
     joker_csv = Path("data/clean/joker_draws.csv")
     loto_cache = Path("data/raw/loto_649_results.html")
     loto_csv = Path("data/clean/loto_649_draws.csv")
+    loto540_cache = Path("data/raw/loto_540_results.html")
+    loto540_csv = Path("data/clean/loto_540_draws.csv")
 
     joker_cache.parent.mkdir(parents=True, exist_ok=True)
     joker_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -84,8 +88,11 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
             log("Clearing Joker cache...")
             joker_cache.unlink()
         if loto_cache.exists():
-            log("Clearing Loto cache...")
+            log("Clearing Loto 6/49 cache...")
             loto_cache.unlink()
+        if loto540_cache.exists():
+            log("Clearing Loto 5/40 cache...")
+            loto540_cache.unlink()
 
         try:
             log("Fetching Joker results from loto.ro...")
@@ -100,6 +107,12 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
                 loto_cache,
                 loto_csv,
             )
+            log("Fetching Loto 5/40 results from loto.ro...")
+            update_loto540(
+                "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/540_si_super_noroc/rezultate_extrageri.html",
+                loto540_cache,
+                loto540_csv,
+            )
             log("Fetch completed successfully.")
         except Exception as e:
             log(f"ERROR: Fetch failed: {e}")
@@ -113,24 +126,30 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
         log("Loading draws from CSV...")
         joker_draws = load_joker(joker_csv)
         loto_draws = load_loto649(loto_csv)
+        loto540_draws = load_loto540(loto540_csv)
 
         log(f"Joker draws loaded: {len(joker_draws) if joker_draws else 0}")
-        log(f"Loto draws loaded: {len(loto_draws) if loto_draws else 0}")
+        log(f"Loto 6/49 draws loaded: {len(loto_draws) if loto_draws else 0}")
+        log(f"Loto 5/40 draws loaded: {len(loto540_draws) if loto540_draws else 0}")
 
         if joker_draws:
             log(f"Latest Joker draw date: {joker_draws[-1].date}")
         if loto_draws:
-            log(f"Latest Loto draw date: {loto_draws[-1].date}")
+            log(f"Latest Loto 6/49 draw date: {loto_draws[-1].date}")
+        if loto540_draws:
+            log(f"Latest Loto 5/40 draw date: {loto540_draws[-1].date}")
 
         joker_ok = bool(joker_draws) and str(joker_draws[-1].date) >= yesterday
         loto_ok = bool(loto_draws) and str(loto_draws[-1].date) >= yesterday
+        loto540_ok = bool(loto540_draws) and str(loto540_draws[-1].date) >= yesterday
 
         log(f"Joker results recent enough: {joker_ok}")
-        log(f"Loto results recent enough: {loto_ok}")
+        log(f"Loto 6/49 results recent enough: {loto_ok}")
+        log(f"Loto 5/40 results recent enough: {loto540_ok}")
 
-        if joker_ok or loto_ok:
+        if joker_ok or loto_ok or loto540_ok:
             log("\n=== Recent results found! Proceeding with comparison ===")
-            return joker_draws, loto_draws
+            return joker_draws, loto_draws, loto540_draws
 
         if attempt < max_retries - 1:
             log(f"Results not yet available for {yesterday}. Waiting {delay_minutes} minute(s)...")
@@ -138,7 +157,7 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
 
     log(f"\nWARNING: Could not find results from {yesterday} after {max_retries} attempts")
     log("Proceeding with latest available results...")
-    return load_joker(joker_csv), load_loto649(loto_csv)
+    return load_joker(joker_csv), load_loto649(loto_csv), load_loto540(loto540_csv)
 
 
 def main():
@@ -148,7 +167,7 @@ def main():
     delay_minutes = int(os.environ.get("RETRY_DELAY_MINUTES", "1"))
     picks_dir = Path(os.environ.get("PICKS_DIR", "picks"))
 
-    joker_draws, loto_draws = fetch_results_with_retry(
+    joker_draws, loto_draws, loto540_draws = fetch_results_with_retry(
         max_retries=max_retries, delay_minutes=delay_minutes
     )
 
@@ -173,17 +192,31 @@ def main():
     else:
         latest_loto = loto_draws[-1]
         noroc_str = f" + N{latest_loto.noroc}" if latest_loto.noroc else ""
-        log(f"Latest Loto: {latest_loto.date} - {latest_loto.main_numbers}{noroc_str}")
+        log(f"Latest Loto 6/49: {latest_loto.date} - {latest_loto.main_numbers}{noroc_str}")
         print(f"LOTO_DATE={latest_loto.date}")
         print(f"LOTO_WINNING={', '.join(str(n) for n in latest_loto.main_numbers)}{noroc_str}")
+
+    if not loto540_draws:
+        log("No Loto 5/40 draws available")
+        print("LOTO540_DATE=N/A")
+        print("LOTO540_WINNING=No results available")
+        print("LOTO540_RESULTS=Could not fetch Loto 5/40 results")
+    else:
+        latest_540 = loto540_draws[-1]
+        super_noroc_str = f" + SN{latest_540.super_noroc:06d}" if latest_540.super_noroc is not None else ""
+        log(f"Latest Loto 5/40: {latest_540.date} - {latest_540.main_numbers}{super_noroc_str}")
+        print(f"LOTO540_DATE={latest_540.date}")
+        print(f"LOTO540_WINNING={', '.join(str(n) for n in latest_540.main_numbers)}{super_noroc_str}")
 
     # Read saved picks
     log("\n=== Loading Saved Picks ===")
     joker_picks_file = picks_dir / "joker.txt"
     loto_picks_file = picks_dir / "loto649.txt"
+    loto540_picks_file = picks_dir / "loto540.txt"
 
     log(f"Joker picks file exists: {joker_picks_file.exists()}")
-    log(f"Loto picks file exists: {loto_picks_file.exists()}")
+    log(f"Loto 6/49 picks file exists: {loto_picks_file.exists()}")
+    log(f"Loto 5/40 picks file exists: {loto540_picks_file.exists()}")
 
     if joker_picks_file.exists():
         content = joker_picks_file.read_text()
@@ -204,10 +237,10 @@ def main():
 
     if loto_picks_file.exists():
         content = loto_picks_file.read_text()
-        log(f"Loto picks content:\n{content}")
+        log(f"Loto 6/49 picks content:\n{content}")
         if loto_draws:
             loto_picks = parse_picks(content)
-            log(f"Parsed {len(loto_picks)} Loto picks")
+            log(f"Parsed {len(loto_picks)} Loto 6/49 picks")
             loto_results = check_matches(loto_picks, loto_draws[-1].main_numbers)
 
             output_lines = []
@@ -218,6 +251,25 @@ def main():
             print("LOTO_RESULTS=No draws to compare against")
     else:
         print("LOTO_RESULTS=No picks found to compare")
+
+    if loto540_picks_file.exists():
+        content = loto540_picks_file.read_text()
+        log(f"Loto 5/40 picks content:\n{content}")
+        if loto540_draws:
+            loto540_picks = parse_picks(content)
+            log(f"Parsed {len(loto540_picks)} Loto 5/40 picks")
+            # In 5/40, player picks 5 numbers, lottery draws 6
+            loto540_results = check_matches(loto540_picks, loto540_draws[-1].main_numbers)
+
+            output_lines = []
+            for r in loto540_results:
+                # Show matches out of 5 (player's picks)
+                output_lines.append(format_result(r["pick"], r["matched"], r["count"], 5))
+            print("LOTO540_RESULTS=" + "\\n".join(output_lines))
+        else:
+            print("LOTO540_RESULTS=No draws to compare against")
+    else:
+        print("LOTO540_RESULTS=No picks found to compare")
 
     log("\n=== Results Checker Completed ===")
 
