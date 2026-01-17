@@ -25,6 +25,7 @@ from shared.advanced_strategies import (
     generate_coverage_picks,
     generate_pattern_picks,
 )
+from shared.recency import resolve_half_life
 
 # Joker game parameters
 NUMBER_POOL = 45
@@ -32,28 +33,28 @@ NUMBERS_TO_PICK = 5
 SECONDARY_POOL = 20
 
 
-def get_strategy_by_name(name: str):
+def get_strategy_by_name(name: str, half_life: float):
     """Get strategy instance by name."""
     strategies = {
-        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
+        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
     }
     return strategies.get(name)
 
 
-def get_all_strategies():
+def get_all_strategies(half_life: float):
     """Get all available strategies."""
     return [
-        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
-        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL),
+        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
+        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, SECONDARY_POOL, half_life=half_life),
     ]
 
 
@@ -73,6 +74,9 @@ def main():
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed strategy information"
+    )
+    parser.add_argument(
+        "--half-life", type=float, help="Recency half-life in draws"
     )
     parser.add_argument(
         "--wheel", type=int, metavar="N",
@@ -95,6 +99,10 @@ def main():
         seed = resolve_seed(args.seed, os.getenv("JOKER_SEED"))
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    try:
+        half_life = resolve_half_life(args.half_life, os.getenv("RECENCY_HALF_LIFE"))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     rng = random.Random(seed) if seed is not None else random.SystemRandom()
     draw_tuples = [(d.main_numbers, d.joker) for d in draws]
@@ -112,7 +120,7 @@ def main():
 
         # First get top numbers using ensemble
         ensemble = EnsembleVoter(
-            get_all_strategies(),
+            get_all_strategies(half_life),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
@@ -149,29 +157,29 @@ def main():
     # Strategy mode
     if args.strategy == "smart":
         # Best strategy - combines all techniques
-        main_picks = generate_smart_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
+        main_picks = generate_smart_picks(JOKER_CONFIG, draw_main_only, args.count, rng, half_life=half_life)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "optimal":
-        main_picks = generate_optimal_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
+        main_picks = generate_optimal_picks(JOKER_CONFIG, draw_main_only, args.count, rng, half_life=half_life)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "coverage":
-        main_picks = generate_coverage_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
+        main_picks = generate_coverage_picks(JOKER_CONFIG, draw_main_only, args.count, rng, half_life=half_life)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "pattern":
-        main_picks = generate_pattern_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
+        main_picks = generate_pattern_picks(JOKER_CONFIG, draw_main_only, args.count, rng, half_life=half_life)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "auto":
-        lines = generate_picks(draw_tuples, count=args.count, rng=rng)
+        lines = generate_picks(draw_tuples, count=args.count, rng=rng, half_life=half_life)
     elif args.strategy == "ensemble":
         ensemble = EnsembleVoter(
-            get_all_strategies(),
+            get_all_strategies(half_life),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
         main_picks = ensemble.generate(draw_main_only, count=args.count, rng=rng)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     else:
-        strategy = get_strategy_by_name(args.strategy)
+        strategy = get_strategy_by_name(args.strategy, half_life)
         if strategy:
             main_picks = strategy.generate(draw_main_only, count=args.count, rng=rng)
             lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
