@@ -18,12 +18,14 @@ from .features import (
     compute_position_frequency,
 )
 from .game_strategies import _sample_weighted
+from .recency import DEFAULT_HALF_LIFE, draw_weights
 
 
 def compute_composite_scores(
     config: GameConfig,
     draws: list[list[int]],
     weights: dict[str, float] | None = None,
+    half_life: float = DEFAULT_HALF_LIFE,
 ) -> dict[int, float]:
     """Compute composite probability scores for each number.
 
@@ -38,6 +40,7 @@ def compute_composite_scores(
         config: Game configuration
         draws: Historical draws
         weights: Optional weights for each factor
+        half_life: Recency half-life in draws
 
     Returns:
         Dict mapping number -> composite score (higher = more likely)
@@ -58,23 +61,23 @@ def compute_composite_scores(
     pool_size = config.pool_size
     scores = {n: 0.0 for n in config.pool_range}
 
+    weights_by_draw = draw_weights(len(draws), half_life)
+
     # 1. Frequency score (how often each number appears)
     freq = Counter()
-    total = 0
-    for main in draws:
+    total = 0.0
+    for main, weight in zip(draws, weights_by_draw):
         for num in main:
-            freq[num] += 1
-            total += 1
+            freq[num] += weight
+            total += weight
 
     if total > 0:
         for num in config.pool_range:
             scores[num] += weights["frequency"] * (freq.get(num, 0) / total)
 
     # 2. Recency score (exponential decay weighting)
-    decay_rate = 0.95
     recency_score = {n: 0.0 for n in config.pool_range}
-    for idx, main in enumerate(draws):
-        weight = decay_rate ** (len(draws) - idx - 1)
+    for main, weight in zip(draws, weights_by_draw):
         for num in main:
             recency_score[num] += weight
 
@@ -95,7 +98,7 @@ def compute_composite_scores(
             scores[num] += weights["gap"] * min(gap_ratio, 2.0) / 2.0
 
     # 4. Position score (numbers that appear in specific positions)
-    pos_freq = compute_position_frequency(draws, pool_size)
+    pos_freq = compute_position_frequency(draws, pool_size, weights=weights_by_draw)
     for num in config.pool_range:
         pos_score = 0
         for pos_dict in pos_freq:
@@ -159,6 +162,7 @@ def generate_optimal_picks(
     count: int,
     rng: random.Random | None = None,
     strategy: Literal["balanced", "aggressive", "conservative"] = "balanced",
+    half_life: float = DEFAULT_HALF_LIFE,
 ) -> list[list[int]]:
     """Generate optimized lottery picks using composite scoring.
 
@@ -199,7 +203,7 @@ def generate_optimal_picks(
     else:  # balanced
         weights = None  # Use defaults
 
-    scores = compute_composite_scores(config, draws, weights)
+    scores = compute_composite_scores(config, draws, weights, half_life=half_life)
 
     # Convert to lists for sampling
     numbers = list(config.pool_range)
@@ -228,6 +232,7 @@ def generate_coverage_picks(
     draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
+    half_life: float = DEFAULT_HALF_LIFE,
 ) -> list[list[int]]:
     """Generate picks that maximize number coverage.
 
@@ -245,7 +250,7 @@ def generate_coverage_picks(
     """
     rng = rng or random.SystemRandom()
 
-    scores = compute_composite_scores(config, draws)
+    scores = compute_composite_scores(config, draws, half_life=half_life)
     numbers = list(config.pool_range)
     probs = [scores[n] for n in numbers]
 
@@ -278,6 +283,7 @@ def generate_pattern_picks(
     draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
+    half_life: float = DEFAULT_HALF_LIFE,
 ) -> list[list[int]]:
     """Generate picks that match historical patterns.
 
@@ -325,7 +331,7 @@ def generate_pattern_picks(
     target_high = round(avg_high)
 
     # Generate picks matching patterns
-    scores = compute_composite_scores(config, draws)
+    scores = compute_composite_scores(config, draws, half_life=half_life)
     numbers = list(config.pool_range)
     probs = [scores[n] for n in numbers]
 
@@ -369,6 +375,7 @@ def generate_smart_picks(
     draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
+    half_life: float = DEFAULT_HALF_LIFE,
 ) -> list[list[int]]:
     """Generate the smartest possible picks using all available techniques.
 
@@ -394,9 +401,9 @@ def generate_smart_picks(
         return generate_random_picks(config, count, rng)
 
     # Get different strategy suggestions
-    optimal = generate_optimal_picks(config, draws, count, rng, "balanced")
-    coverage = generate_coverage_picks(config, draws, count, rng)
-    pattern = generate_pattern_picks(config, draws, count, rng)
+    optimal = generate_optimal_picks(config, draws, count, rng, "balanced", half_life=half_life)
+    coverage = generate_coverage_picks(config, draws, count, rng, half_life=half_life)
+    pattern = generate_pattern_picks(config, draws, count, rng, half_life=half_life)
 
     # Combine: take best from each
     all_picks = []
