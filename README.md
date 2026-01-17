@@ -197,6 +197,13 @@ Environment:
 - `RECENCY_HALF_LIFE_MODE=draws|days` (defaults to draws)
 - `RECENCY_HALF_LIFE` (optional numeric half-life)
 
+### Recency Weighting
+
+Strategies apply exponential decay so newer draws influence scores more. The newest draw always has weight 1.0, and the weight halves at the configured half-life.
+
+- `draws` mode: half-life is measured in number of draws (assumes even spacing).
+- `days` mode: half-life is measured in calendar days between draw dates, so uneven gaps are handled correctly.
+
 ### Reproducibility
 
 Fixed seed via argument:
