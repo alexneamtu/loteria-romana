@@ -16,6 +16,16 @@ on:
         options:
           - generate
           - check_results
+      max_retries:
+        description: 'Max retries for results check (default: 5)'
+        required: false
+        default: '5'
+        type: string
+      retry_delay:
+        description: 'Delay between retries in minutes (default: 10)'
+        required: false
+        default: '10'
+        type: string
 
 permissions:
   actions: read
@@ -127,8 +137,8 @@ jobs:
         id: results
         timeout-minutes: 60
         env:
-          MAX_RETRIES: '5'
-          RETRY_DELAY_MINUTES: '10'
+          MAX_RETRIES: ${{ github.event.inputs.max_retries || '5' }}
+          RETRY_DELAY_MINUTES: ${{ github.event.inputs.retry_delay || '10' }}
         run: |
           output=$(python scripts/check_results.py 2>&1)
           echo "$output"
