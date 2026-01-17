@@ -16,6 +16,7 @@ from shared.stats import (
     compute_consecutive_distribution,
     build_position_frequency,
 )
+from shared.recency import draw_weights
 
 
 class TestDeltaFunctions(unittest.TestCase):
@@ -35,6 +36,16 @@ class TestDeltaFunctions(unittest.TestCase):
         dist = build_delta_distribution(draws)
         self.assertEqual(dist[1], 4)  # four 1s from first draw
         self.assertEqual(dist[2], 4)  # four 2s from second draw
+
+    def test_build_delta_distribution_weighted(self):
+        draws = [
+            [1, 2, 3],  # deltas: [1, 1]
+            [1, 3, 5],  # deltas: [2, 2]
+        ]
+        weights = draw_weights(len(draws), 1.0)
+        dist = build_delta_distribution(draws, weights=weights)
+        self.assertAlmostEqual(dist[1], 2 * weights[0], places=6)
+        self.assertAlmostEqual(dist[2], 2 * weights[1], places=6)
 
 
 class TestDeltaStrategy(unittest.TestCase):
@@ -77,7 +88,7 @@ class TestDeltaStrategy(unittest.TestCase):
 
 class TestHotColdStrategy(unittest.TestCase):
     def test_compute_heat_scores(self):
-        strategy = HotColdStrategy(number_pool=10, numbers_to_pick=3, decay_rate=0.9)
+        strategy = HotColdStrategy(number_pool=10, numbers_to_pick=3, half_life=1.0)
         draws = [
             [1, 2, 3],  # oldest
             [1, 2, 4],  # middle
@@ -204,7 +215,9 @@ class TestSumConstraintStrategy(unittest.TestCase):
         ]
         mean_sum, std_sum = strategy.compute_sum_distribution(draws)
 
-        expected_mean = (101 + 125 + 110) / 3
+        sums = [101, 125, 110]
+        weights = draw_weights(len(draws), strategy.half_life)
+        expected_mean = sum(value * weight for value, weight in zip(sums, weights)) / sum(weights)
         self.assertAlmostEqual(mean_sum, expected_mean, places=5)
         self.assertGreater(std_sum, 0)
 

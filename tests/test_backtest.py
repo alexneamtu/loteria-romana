@@ -22,7 +22,7 @@ class TestBacktest(unittest.TestCase):
             ([1, 2, 11, 12, 13], 3),
         ]
         with patch("joker_model.backtest.build_frequency") as build_frequency:
-            build_frequency.side_effect = lambda _: {n: 0 for n in range(1, 46)}
+            build_frequency.side_effect = lambda draws, **_: {n: 0 for n in range(1, 46)}
             pick_best_strategy(draws, rng=random.Random(0))
             self.assertGreaterEqual(build_frequency.call_count, 1)
             self.assertEqual(build_frequency.call_args_list[0][0][0], [])

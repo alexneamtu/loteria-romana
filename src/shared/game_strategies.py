@@ -8,6 +8,7 @@ import random
 from typing import Protocol
 
 from .game_config import GameConfig
+from .recency import DEFAULT_HALF_LIFE, draw_weights
 
 
 class StrategyProtocol(Protocol):
@@ -81,7 +82,8 @@ def generate_random_picks(
 def build_frequency(
     config: GameConfig,
     draws: list[list[int]],
-) -> dict[int, int]:
+    half_life: float = DEFAULT_HALF_LIFE,
+) -> dict[int, float]:
     """Build frequency map from historical draws.
 
     Args:
@@ -91,11 +93,15 @@ def build_frequency(
     Returns:
         Dictionary mapping number -> frequency count
     """
-    freq = {n: 0 for n in config.pool_range}
-    for main in draws:
+    freq = {n: 0.0 for n in config.pool_range}
+    if not draws:
+        return freq
+
+    weights = draw_weights(len(draws), half_life)
+    for main, weight in zip(draws, weights):
         for n in main:
             if n in freq:
-                freq[n] += 1
+                freq[n] += weight
     return freq
 
 
@@ -104,6 +110,7 @@ def generate_frequency_picks(
     draws: list[list[int]],
     count: int,
     rng: random.Random | None = None,
+    half_life: float = DEFAULT_HALF_LIFE,
 ) -> list[list[int]]:
     """Generate frequency-weighted lottery picks.
 
@@ -120,7 +127,7 @@ def generate_frequency_picks(
         List of picks, each pick is a sorted list of numbers
     """
     rng = rng or random.SystemRandom()
-    freq = build_frequency(config, draws)
+    freq = build_frequency(config, draws, half_life=half_life)
     numbers = list(config.pool_range)
     weights = [freq.get(n, 0) + 1 for n in numbers]  # +1 smoothing
 

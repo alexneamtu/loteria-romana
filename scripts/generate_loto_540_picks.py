@@ -25,34 +25,35 @@ from shared.advanced_strategies import (
     generate_coverage_picks,
     generate_pattern_picks,
 )
+from shared.recency import resolve_half_life
 
 # Loto 5/40 game parameters
 NUMBER_POOL = 40
 NUMBERS_TO_PICK = 5
 
 
-def get_strategy_by_name(name: str):
+def get_strategy_by_name(name: str, half_life: float):
     """Get strategy instance by name."""
     strategies = {
-        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
     }
     return strategies.get(name)
 
 
-def get_all_strategies():
+def get_all_strategies(half_life: float):
     """Get all available strategies."""
     return [
-        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
-        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK),
+        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
     ]
 
 
@@ -72,6 +73,9 @@ def main():
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed strategy information"
+    )
+    parser.add_argument(
+        "--half-life", type=float, help="Recency half-life in draws"
     )
     parser.add_argument(
         "--wheel", type=int, metavar="N",
@@ -94,6 +98,10 @@ def main():
         seed = resolve_seed(args.seed, os.getenv("LOTO_540_SEED"))
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    try:
+        half_life = resolve_half_life(args.half_life, os.getenv("RECENCY_HALF_LIFE"))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     rng = random.Random(seed) if seed is not None else random.SystemRandom()
     draw_tuples = [d.main_numbers for d in draws]
@@ -110,7 +118,7 @@ def main():
 
         # First get top numbers using ensemble
         ensemble = EnsembleVoter(
-            get_all_strategies(),
+            get_all_strategies(half_life),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
@@ -145,24 +153,24 @@ def main():
 
     # Strategy mode
     if args.strategy == "smart":
-        lines = generate_smart_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng)
+        lines = generate_smart_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
     elif args.strategy == "optimal":
-        lines = generate_optimal_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng)
+        lines = generate_optimal_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
     elif args.strategy == "coverage":
-        lines = generate_coverage_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng)
+        lines = generate_coverage_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
     elif args.strategy == "pattern":
-        lines = generate_pattern_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng)
+        lines = generate_pattern_picks(LOTO_540_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
     elif args.strategy == "auto":
-        lines = generate_picks(draw_tuples, count=args.count, rng=rng)
+        lines = generate_picks(draw_tuples, count=args.count, rng=rng, half_life=half_life)
     elif args.strategy == "ensemble":
         ensemble = EnsembleVoter(
-            get_all_strategies(),
+            get_all_strategies(half_life),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
         lines = ensemble.generate(draw_tuples, count=args.count, rng=rng)
     else:
-        strategy = get_strategy_by_name(args.strategy)
+        strategy = get_strategy_by_name(args.strategy, half_life)
         if strategy:
             lines = strategy.generate(draw_tuples, count=args.count, rng=rng)
         else:

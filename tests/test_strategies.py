@@ -3,6 +3,7 @@ import random
 
 from joker_model.metrics import is_joker_prize
 from joker_model.strategies import build_frequency, generate_random_lines, generate_frequency_lines
+from shared.recency import draw_weights, DEFAULT_HALF_LIFE
 
 
 class TestStrategies(unittest.TestCase):
@@ -23,11 +24,12 @@ class TestStrategies(unittest.TestCase):
             ([1, 2, 3, 4, 5], 1),
             ([1, 2, 10, 11, 12], 2),
         ]
+        weights = draw_weights(len(draws), DEFAULT_HALF_LIFE)
         freq = build_frequency(draws)
-        self.assertEqual(freq[1], 2)
-        self.assertEqual(freq[2], 2)
-        self.assertEqual(freq[3], 1)
-        self.assertEqual(freq[45], 0)
+        self.assertAlmostEqual(freq[1], weights[0] + weights[1], places=6)
+        self.assertAlmostEqual(freq[2], weights[0] + weights[1], places=6)
+        self.assertAlmostEqual(freq[3], weights[0], places=6)
+        self.assertEqual(freq[45], 0.0)
 
     def test_generate_frequency_lines_unique(self):
         freq = {n: 1 for n in range(1, 46)}

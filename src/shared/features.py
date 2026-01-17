@@ -228,7 +228,8 @@ def compute_sum_statistics(draws: list[list[int]]) -> dict[str, float]:
 def compute_position_frequency(
     draws: list[list[int]],
     pool_size: int,
-) -> list[dict[int, int]]:
+    weights: list[float] | None = None,
+) -> list[dict[int, float]]:
     """Compute frequency of each number at each position.
 
     Returns list of dicts, one per position, mapping number -> count.
@@ -238,12 +239,14 @@ def compute_position_frequency(
 
     # Determine number of positions from first draw
     num_positions = len(draws[0])
-    position_freq = [{n: 0 for n in range(1, pool_size + 1)} for _ in range(num_positions)]
+    position_freq = [{n: 0.0 for n in range(1, pool_size + 1)} for _ in range(num_positions)]
+    if weights is None:
+        weights = [1.0] * len(draws)
 
-    for main in draws:
+    for main, weight in zip(draws, weights):
         sorted_nums = sorted(main)
         for pos, num in enumerate(sorted_nums):
-            position_freq[pos][num] += 1
+            position_freq[pos][num] += weight
 
     return position_freq
 
