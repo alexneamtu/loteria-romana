@@ -1,0 +1,64 @@
+name: Generate Lottery Picks
+
+on:
+  schedule:
+    # Romanian lottery draws: Sunday and Thursday
+    # Run at 6:00 PM EET (16:00 UTC) before evening draws
+    - cron: '0 16 * * 0,4'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-and-notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate Joker picks
+        id: joker
+        run: |
+          {
+            echo 'PICKS<<EOF'
+            PYTHONPATH=src python scripts/generate_joker_picks.py -s ensemble -n 3 --seed ${{ github.run_id }}
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Generate Loto 6/49 picks
+        id: loto649
+        run: |
+          {
+            echo 'PICKS<<EOF'
+            PYTHONPATH=src python scripts/generate_loto_649_picks.py -s ensemble -n 3 --seed ${{ github.run_id }}
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Send to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          DATE=$(date +"%Y-%m-%d")
+          MESSAGE="🎰 *Lottery Picks - ${DATE}*
+
+          🃏 *JOKER*
+          \`\`\`
+          ${{ steps.joker.outputs.PICKS }}
+          \`\`\`
+
+          🎱 *LOTO 6/49*
+          \`\`\`
+          ${{ steps.loto649.outputs.PICKS }}
+          \`\`\`
+
+          _Generated with ensemble strategy_"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="${MESSAGE}" \
+            -d parse_mode="Markdown"
