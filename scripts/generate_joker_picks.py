@@ -98,6 +98,7 @@ def main():
 
     rng = random.Random(seed) if seed is not None else random.SystemRandom()
     draw_tuples = [(d.main_numbers, d.joker) for d in draws]
+    draw_main_only = [d.main_numbers for d in draws]  # For shared strategies
 
     if args.verbose:
         print(f"Loaded {len(draws)} historical draws")
@@ -115,7 +116,7 @@ def main():
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
-        probs = ensemble.combine_probabilities(draw_tuples)
+        probs = ensemble.combine_probabilities(draw_main_only)
 
         # Select top N numbers
         number_probs = [(i + 1, p) for i, p in enumerate(probs)]
@@ -148,16 +149,16 @@ def main():
     # Strategy mode
     if args.strategy == "smart":
         # Best strategy - combines all techniques
-        main_picks = generate_smart_picks(JOKER_CONFIG, draw_tuples, args.count, rng)
+        main_picks = generate_smart_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "optimal":
-        main_picks = generate_optimal_picks(JOKER_CONFIG, draw_tuples, args.count, rng)
+        main_picks = generate_optimal_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "coverage":
-        main_picks = generate_coverage_picks(JOKER_CONFIG, draw_tuples, args.count, rng)
+        main_picks = generate_coverage_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "pattern":
-        main_picks = generate_pattern_picks(JOKER_CONFIG, draw_tuples, args.count, rng)
+        main_picks = generate_pattern_picks(JOKER_CONFIG, draw_main_only, args.count, rng)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "auto":
         lines = generate_picks(draw_tuples, count=args.count, rng=rng)
@@ -167,11 +168,13 @@ def main():
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
-        lines = ensemble.generate(draw_tuples, count=args.count, rng=rng)
+        main_picks = ensemble.generate(draw_main_only, count=args.count, rng=rng)
+        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     else:
         strategy = get_strategy_by_name(args.strategy)
         if strategy:
-            lines = strategy.generate(draw_tuples, count=args.count, rng=rng)
+            main_picks = strategy.generate(draw_main_only, count=args.count, rng=rng)
+            lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
         else:
             lines = generate_picks(draw_tuples, count=args.count, rng=rng)
 
