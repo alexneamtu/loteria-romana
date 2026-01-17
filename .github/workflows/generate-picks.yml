@@ -4,8 +4,8 @@ on:
   schedule:
     # Generate picks: Sunday and Thursday at 4 PM UTC (6 PM EET) - before draws
     - cron: '0 16 * * 0,4'
-    # Check results: Sunday and Thursday at 10 PM UTC (midnight EET) - after draws
-    - cron: '0 22 * * 0,4'
+    # Check results: Monday and Friday at 6 AM UTC (8 AM EET) - morning after draws
+    - cron: '0 6 * * 1,5'
   workflow_dispatch:
     inputs:
       action:
@@ -82,7 +82,7 @@ jobs:
           \`\`\`
 
           _Generated with ensemble strategy_
-          _Results will be checked after the draw_"
+          _Results will be checked tomorrow morning_"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
@@ -90,7 +90,7 @@ jobs:
             -d parse_mode="Markdown"
 
   check-results:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'check_results' || github.event_name == 'schedule' && github.event.schedule == '0 22 * * 0,4'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'check_results' || github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1,5'
     runs-on: ubuntu-latest
 
     steps:
@@ -106,6 +106,7 @@ jobs:
         run: |
           cat > check_results.py << 'SCRIPT'
           import sys
+          import time
           sys.path.insert(0, 'src')
 
           from pathlib import Path
@@ -114,6 +115,7 @@ jobs:
           from loto_649_model.fetch import update_dataset as update_loto649
           from loto_649_model.storage import load_draws as load_loto649
           import re
+          from datetime import datetime, timedelta
 
           def parse_picks(text, game):
               """Parse picks from saved text format."""
@@ -121,7 +123,6 @@ jobs:
               for line in text.strip().split('\n'):
                   if not line.strip():
                       continue
-                  # Format: "1. 7, 11, 44, 45, 46 + J13" or "1. 1, 7, 18, 27, 35, 49 + N6026250"
                   match = re.match(r'\d+\.\s*([\d,\s]+)', line)
                   if match:
                       numbers = [int(n.strip()) for n in match.group(1).split(',')]
@@ -152,29 +153,65 @@ jobs:
                   matched_str = ', '.join(str(n) for n in matched)
                   return f"✅ {pick_str} - {count}/{total} matched: [{matched_str}]"
 
-          # Update datasets
-          print("Fetching latest results...")
+          def fetch_results_with_retry(max_retries=5, delay_minutes=10):
+              """Fetch results with retry logic."""
+              joker_cache = Path("data/raw/joker_results.html")
+              joker_csv = Path("data/clean/joker_draws.csv")
+              loto_cache = Path("data/raw/loto_649_results.html")
+              loto_csv = Path("data/clean/loto_649_draws.csv")
 
-          joker_cache = Path("data/raw/joker_results.html")
-          joker_csv = Path("data/clean/joker_draws.csv")
-          loto_cache = Path("data/raw/loto_649_results.html")
-          loto_csv = Path("data/clean/loto_649_draws.csv")
+              joker_cache.parent.mkdir(parents=True, exist_ok=True)
+              joker_csv.parent.mkdir(parents=True, exist_ok=True)
 
-          joker_cache.parent.mkdir(parents=True, exist_ok=True)
-          joker_csv.parent.mkdir(parents=True, exist_ok=True)
+              # Get yesterday's date (draw date)
+              yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-          update_joker(
-              "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html",
-              joker_cache, joker_csv
-          )
-          update_loto649(
-              "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html",
-              loto_cache, loto_csv
-          )
+              for attempt in range(max_retries):
+                  print(f"Attempt {attempt + 1}/{max_retries}: Fetching results...")
 
-          # Load latest draws
-          joker_draws = load_joker(joker_csv)
-          loto_draws = load_loto649(loto_csv)
+                  # Clear cache to force fresh fetch
+                  if joker_cache.exists():
+                      joker_cache.unlink()
+                  if loto_cache.exists():
+                      loto_cache.unlink()
+
+                  try:
+                      update_joker(
+                          "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html",
+                          joker_cache, joker_csv
+                      )
+                      update_loto649(
+                          "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html",
+                          loto_cache, loto_csv
+                      )
+                  except Exception as e:
+                      print(f"Fetch error: {e}")
+                      if attempt < max_retries - 1:
+                          print(f"Waiting {delay_minutes} minutes before retry...")
+                          time.sleep(delay_minutes * 60)
+                          continue
+                      raise
+
+                  # Load and check if we have recent results
+                  joker_draws = load_joker(joker_csv)
+                  loto_draws = load_loto649(loto_csv)
+
+                  joker_ok = joker_draws and str(joker_draws[-1].date) >= yesterday
+                  loto_ok = loto_draws and str(loto_draws[-1].date) >= yesterday
+
+                  if joker_ok or loto_ok:
+                      print(f"Results found!")
+                      return joker_draws, loto_draws
+
+                  if attempt < max_retries - 1:
+                      print(f"Results not yet available. Waiting {delay_minutes} minutes...")
+                      time.sleep(delay_minutes * 60)
+
+              print("Warning: Could not find recent results after all retries")
+              return load_joker(joker_csv), load_loto649(loto_csv)
+
+          # Fetch with retries
+          joker_draws, loto_draws = fetch_results_with_retry(max_retries=5, delay_minutes=10)
 
           if not joker_draws:
               print("JOKER_WINNING=No results available")
@@ -197,7 +234,7 @@ jobs:
 
           if joker_picks_file.exists() and joker_draws:
               joker_picks = parse_picks(joker_picks_file.read_text(), 'joker')
-              joker_results = check_matches(joker_picks, latest_joker.main_numbers)
+              joker_results = check_matches(joker_picks, joker_draws[-1].main_numbers)
 
               output_lines = []
               for r in joker_results:
@@ -208,7 +245,7 @@ jobs:
 
           if loto_picks_file.exists() and loto_draws:
               loto_picks = parse_picks(loto_picks_file.read_text(), 'loto649')
-              loto_results = check_matches(loto_picks, latest_loto.main_numbers)
+              loto_results = check_matches(loto_picks, loto_draws[-1].main_numbers)
 
               output_lines = []
               for r in loto_results:
@@ -235,8 +272,9 @@ jobs:
           fi
           ls -la picks/ || echo "No picks directory"
 
-      - name: Check results
+      - name: Check results (with retries)
         id: results
+        timeout-minutes: 60
         run: |
           output=$(PYTHONPATH=src python check_results.py 2>&1)
           echo "$output"
@@ -267,7 +305,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          DATE=$(date +"%Y-%m-%d")
+          DATE=$(date -d "yesterday" +"%Y-%m-%d" 2>/dev/null || date -v-1d +"%Y-%m-%d")
           MESSAGE="🎲 *Draw Results - ${DATE}*
 
           🃏 *JOKER*
