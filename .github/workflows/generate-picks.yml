@@ -28,7 +28,7 @@ jobs:
         run: |
           {
             echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_joker_picks.py -s ensemble -n 3 --seed ${{ github.run_id }}
+            PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n 3 --seed ${{ github.run_id }}
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
@@ -37,7 +37,7 @@ jobs:
         run: |
           {
             echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_loto_649_picks.py -s ensemble -n 3 --seed ${{ github.run_id }}
+            PYTHONPATH=src python scripts/generate_loto_649_picks.py -s smart -n 3 --seed ${{ github.run_id }}
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
@@ -46,7 +46,7 @@ jobs:
         run: |
           {
             echo 'PICKS<<EOF'
-            PYTHONPATH=src python scripts/generate_loto_540_picks.py -s ensemble -n 3 --seed ${{ github.run_id }}
+            PYTHONPATH=src python scripts/generate_loto_540_picks.py -s smart -n 3 --seed ${{ github.run_id }}
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
@@ -88,7 +88,7 @@ jobs:
           ${{ steps.loto540.outputs.PICKS }}
           \`\`\`
 
-          _Generated with ensemble strategy_
+          _Generated with smart strategy_
           _Results will be checked tomorrow morning_"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \

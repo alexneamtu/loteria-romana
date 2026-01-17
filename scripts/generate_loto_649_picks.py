@@ -18,6 +18,13 @@ from shared.stats import (
 )
 from shared.ensemble import EnsembleVoter
 from shared.wheeling import WheelGenerator, verify_wheel_coverage
+from shared.game_config import LOTO_649_CONFIG
+from shared.advanced_strategies import (
+    generate_smart_picks,
+    generate_optimal_picks,
+    generate_coverage_picks,
+    generate_pattern_picks,
+)
 
 # Loto 6/49 game parameters
 NUMBER_POOL = 49
@@ -61,9 +68,9 @@ def main():
     )
     parser.add_argument(
         "-s", "--strategy",
-        choices=["auto", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
-        default="auto",
-        help="Strategy to use for number selection",
+        choices=["auto", "smart", "optimal", "coverage", "pattern", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
+        default="smart",
+        help="Strategy to use for number selection (smart is recommended)",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed strategy information"
@@ -144,7 +151,19 @@ def main():
         return
 
     # Strategy mode
-    if args.strategy == "auto":
+    if args.strategy == "smart":
+        main_picks = generate_smart_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
+        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+    elif args.strategy == "optimal":
+        main_picks = generate_optimal_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
+        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+    elif args.strategy == "coverage":
+        main_picks = generate_coverage_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
+        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+    elif args.strategy == "pattern":
+        main_picks = generate_pattern_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng)
+        lines = [(main, rng.randint(0, NOROC_MAX) if include_noroc else None) for main in main_picks]
+    elif args.strategy == "auto":
         lines = generate_picks(draw_tuples, count=args.count, rng=rng, include_noroc=include_noroc)
     elif args.strategy == "ensemble":
         ensemble = EnsembleVoter(

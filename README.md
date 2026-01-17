@@ -20,6 +20,12 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 
 ## Features
 
+### Advanced Strategies (Recommended)
+- **Smart** - combines all techniques for maximum accuracy (default)
+- **Optimal** - composite scoring with frequency, recency, gaps, and trends
+- **Coverage** - maximizes number diversity across picks
+- **Pattern** - matches historical sum, odd/even, and high/low patterns
+
 ### Statistical Strategies
 - **Delta Analysis** - generates numbers based on historical delta (gap) distributions
 - **Hot/Cold Numbers** - time-weighted frequency with exponential decay
@@ -28,9 +34,18 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 - **Sum Constraints** - filters lines by total sum within historical range
 - **Balance Strategy** - matches historical odd/even and high/low ratios
 
+### Feature Engineering
+- **Digit frequency analysis** - detects patterns in individual digits (0-9)
+- **Prime number ratio** - tracks proportion of primes in draws
+- **Modular residues** - reveals periodicity patterns (mod 2, 3, 5, 7, 10)
+- **Entropy scoring** - measures randomness to detect anomalies
+- **Position frequency** - analyzes where numbers appear when sorted
+- **Autocorrelation** - measures self-similarity between draws
+
 ### Neural Networks
 - **MLP (Multi-Layer Perceptron)** - configurable hidden layers with L2 regularization
 - **LSTM** - sequence learning for temporal patterns in draw history
+- **Softmax regression** - lightweight model for probability prediction
 
 ### Ensemble Methods
 - **Ensemble Voter** - combines all strategies with weighted voting
@@ -57,7 +72,7 @@ PYTHONPATH=src python -m unittest -v
 
 ### Basic Usage
 
-Generate 2 Joker picks (auto-selects best strategy):
+Generate 2 Joker picks (uses smart strategy by default):
 
 ```bash
 PYTHONPATH=src python scripts/generate_joker_picks.py
@@ -80,8 +95,10 @@ PYTHONPATH=src python scripts/generate_loto_540_picks.py
 Use a specific strategy:
 
 ```bash
-# Available: auto, delta, hotcold, pairs, skip, sum, balance, ensemble
-PYTHONPATH=src python scripts/generate_joker_picks.py -s ensemble -n 5
+# Advanced strategies (recommended): smart, optimal, coverage, pattern
+# Statistical strategies: delta, hotcold, pairs, skip, sum, balance
+# Other: auto, ensemble
+PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n 5
 ```
 
 ### Wheeling Systems
@@ -102,7 +119,10 @@ PYTHONPATH=src python scripts/generate_loto_649_picks.py --wheel 12 --wheel-guar
 
 ```
 -n, --count N          Number of lines to generate (default: 2)
--s, --strategy NAME    Strategy: auto, delta, hotcold, pairs, skip, sum, balance, ensemble
+-s, --strategy NAME    Strategy (default: smart)
+                       Advanced: smart, optimal, coverage, pattern
+                       Statistical: delta, hotcold, pairs, skip, sum, balance
+                       Other: auto, ensemble
 -v, --verbose          Show detailed strategy information
 --seed N               Set deterministic RNG seed
 --wheel N              Generate wheeling system with N numbers
@@ -153,16 +173,20 @@ src/
 ├── loto_649_model/   # Loto 6/49 + Noroc pipeline
 ├── loto_540_model/   # Loto 5/40 + Super Noroc pipeline
 └── shared/           # Shared utilities
-    ├── math_utils.py     # Softmax, cross-entropy, matrix ops
-    ├── config.py         # Game configurations
-    ├── strategy_base.py  # Strategy protocol and base class
-    ├── neural_base.py    # MLP and LSTM implementations
-    ├── stats.py          # Statistical strategies
-    ├── ensemble.py       # Ensemble voting and selection
-    ├── backtest_base.py  # Backtesting framework
-    └── wheeling.py       # Wheeling systems
+    ├── game_config.py        # Game configurations (pool sizes, rules)
+    ├── game_strategies.py    # Unified random/frequency strategies
+    ├── advanced_strategies.py # Smart/optimal/coverage/pattern strategies
+    ├── features.py           # Statistical feature extraction
+    ├── neural_strategies.py  # Neural network strategies
+    ├── math_utils.py         # Softmax, cross-entropy, matrix ops
+    ├── strategy_base.py      # Strategy protocol and base class
+    ├── neural_base.py        # MLP and LSTM implementations
+    ├── stats.py              # Statistical strategies (delta, hotcold, etc.)
+    ├── ensemble.py           # Ensemble voting and selection
+    ├── backtest_base.py      # Backtesting framework
+    └── wheeling.py           # Wheeling systems
 
-tests/                # Unit tests (174 tests)
+tests/                # Unit tests
 docs/plans/           # Design notes and implementation plans
 data/                 # Cached HTML + CSV (created by scripts)
 scripts/              # CLI tools for generating picks
