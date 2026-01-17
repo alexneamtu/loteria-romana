@@ -74,3 +74,27 @@ All game modules (`src/joker_model/`, `src/loto_649_model/`, `src/loto_540_model
 ### Test fixtures
 
 Tests use HTML snippets in `tests/fixtures/` to avoid network calls.
+
+## Git Workflow
+
+**Always create pull requests instead of pushing directly to main.**
+
+1. Create a feature branch from main:
+   ```bash
+   git checkout -b feature/descriptive-branch-name
+   ```
+
+2. Make commits with clear messages
+
+3. Push the branch and create a PR:
+   ```bash
+   git push -u origin feature/descriptive-branch-name
+   gh pr create --fill
+   ```
+
+4. After PR is approved and merged, clean up:
+   ```bash
+   git checkout main
+   git pull
+   git branch -d feature/descriptive-branch-name
+   ```

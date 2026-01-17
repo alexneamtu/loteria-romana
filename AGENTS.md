@@ -1,6 +1,9 @@
 # AGENTS.md instructions for /Users/aneamtu/Development/personal/loteria-romana
 
 <INSTRUCTIONS>
+## Git Workflow
+**Always create pull requests instead of pushing directly to main.** Create a feature branch, make commits, push the branch, and use `gh pr create` to open a PR. Never push directly to main.
+
 ## Worktrees
 Do not use git worktrees in this repo. Work directly in the main workspace unless explicitly asked.
 
