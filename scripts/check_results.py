@@ -156,21 +156,25 @@ def main():
 
     if not joker_draws:
         log("No Joker draws available")
+        print("JOKER_DATE=N/A")
         print("JOKER_WINNING=No results available")
         print("JOKER_RESULTS=Could not fetch Joker results")
     else:
         latest_joker = joker_draws[-1]
         log(f"Latest Joker: {latest_joker.date} - {latest_joker.main_numbers} + J{latest_joker.joker}")
+        print(f"JOKER_DATE={latest_joker.date}")
         print(f"JOKER_WINNING={', '.join(str(n) for n in latest_joker.main_numbers)} + J{latest_joker.joker}")
 
     if not loto_draws:
         log("No Loto 6/49 draws available")
+        print("LOTO_DATE=N/A")
         print("LOTO_WINNING=No results available")
         print("LOTO_RESULTS=Could not fetch Loto 6/49 results")
     else:
         latest_loto = loto_draws[-1]
         noroc_str = f" + N{latest_loto.noroc}" if latest_loto.noroc else ""
         log(f"Latest Loto: {latest_loto.date} - {latest_loto.main_numbers}{noroc_str}")
+        print(f"LOTO_DATE={latest_loto.date}")
         print(f"LOTO_WINNING={', '.join(str(n) for n in latest_loto.main_numbers)}{noroc_str}")
 
     # Read saved picks

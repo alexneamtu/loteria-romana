@@ -13,7 +13,7 @@ def parse_joker_results(html: str) -> list[JokerDraw]:
     date_pattern = re.compile(r"Detalii castiguri\s+la joker\s+din\s+<span>(\d{2}\.\d{2}\.\d{4})</span>")
 
     for match in date_pattern.finditer(html):
-        window_start = max(0, match.start() - 800)
+        window_start = max(0, match.start() - 2000)
         window = html[window_start:match.start()]
 
         main_nums = [int(n) for n in re.findall(r"/bile/(\d{1,2})\.png", window)]

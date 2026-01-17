@@ -144,12 +144,16 @@ jobs:
           echo "$output"
 
           # Parse output
+          JOKER_DATE=$(echo "$output" | grep "^JOKER_DATE=" | cut -d= -f2-)
           JOKER_WINNING=$(echo "$output" | grep "^JOKER_WINNING=" | cut -d= -f2-)
+          LOTO_DATE=$(echo "$output" | grep "^LOTO_DATE=" | cut -d= -f2-)
           LOTO_WINNING=$(echo "$output" | grep "^LOTO_WINNING=" | cut -d= -f2-)
           JOKER_RESULTS=$(echo "$output" | grep "^JOKER_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
           LOTO_RESULTS=$(echo "$output" | grep "^LOTO_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
 
+          echo "JOKER_DATE=${JOKER_DATE}" >> $GITHUB_OUTPUT
           echo "JOKER_WINNING=${JOKER_WINNING}" >> $GITHUB_OUTPUT
+          echo "LOTO_DATE=${LOTO_DATE}" >> $GITHUB_OUTPUT
           echo "LOTO_WINNING=${LOTO_WINNING}" >> $GITHUB_OUTPUT
 
           {
@@ -169,16 +173,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          DATE=$(date -d "yesterday" +"%Y-%m-%d" 2>/dev/null || date -v-1d +"%Y-%m-%d")
-          MESSAGE="🎲 *Draw Results - ${DATE}*
+          MESSAGE="🎲 *Draw Results*
 
-          🃏 *JOKER*
+          🃏 *JOKER* (${{ steps.results.outputs.JOKER_DATE }})
           Winning: ${{ steps.results.outputs.JOKER_WINNING }}
 
           Your picks:
           ${{ steps.results.outputs.JOKER_RESULTS }}
 
-          🎱 *LOTO 6/49*
+          🎱 *LOTO 6/49* (${{ steps.results.outputs.LOTO_DATE }})
           Winning: ${{ steps.results.outputs.LOTO_WINNING }}
 
           Your picks:
