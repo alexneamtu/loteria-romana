@@ -3,6 +3,7 @@ import random
 
 from loto_649_model.metrics import is_loto_649_prize
 from loto_649_model.strategies import build_frequency, generate_random_lines, generate_frequency_lines
+from shared.recency import draw_weights, DEFAULT_HALF_LIFE
 
 
 class TestLoto649Strategies(unittest.TestCase):
@@ -23,11 +24,12 @@ class TestLoto649Strategies(unittest.TestCase):
             [1, 2, 3, 4, 5, 6],
             [1, 2, 10, 11, 12, 13],
         ]
+        weights = draw_weights(len(draws), DEFAULT_HALF_LIFE)
         freq = build_frequency(draws)
-        self.assertEqual(freq[1], 2)
-        self.assertEqual(freq[2], 2)
-        self.assertEqual(freq[3], 1)
-        self.assertEqual(freq[49], 0)
+        self.assertAlmostEqual(freq[1], weights[0] + weights[1], places=6)
+        self.assertAlmostEqual(freq[2], weights[0] + weights[1], places=6)
+        self.assertAlmostEqual(freq[3], weights[0], places=6)
+        self.assertEqual(freq[49], 0.0)
 
 
 if __name__ == "__main__":

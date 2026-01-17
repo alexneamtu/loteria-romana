@@ -22,7 +22,7 @@ class TestLoto649Backtest(unittest.TestCase):
             [1, 2, 13, 14, 15, 16],
         ]
         with patch("loto_649_model.backtest.build_frequency") as build_frequency:
-            build_frequency.side_effect = lambda _: {n: 0 for n in range(1, 50)}
+            build_frequency.side_effect = lambda draws, **_: {n: 0 for n in range(1, 50)}
             pick_best_strategy(draws, rng=random.Random(0))
             self.assertGreaterEqual(build_frequency.call_count, 1)
             self.assertEqual(build_frequency.call_args_list[0][0][0], [])
