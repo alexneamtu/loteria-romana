@@ -4,7 +4,7 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 
 ## What this is / isn't
 
-- This is a loto.ro-only pipeline for Joker, Loto 6/49 + Noroc, and Loto 5/40 + Super Noroc.
+- This is a loto.ro-only pipeline for Joker, Loto 6/49, and Loto 5/40.
 - It is an experiment in sampling strategies and statistical modeling.
 - It does not improve expected value; lottery outcomes remain random.
 - It is not a predictor and not financial advice.
@@ -13,8 +13,8 @@ A loto.ro-only research pipeline that ingests historical results, stores clean d
 
 - Target games:
   - **Joker** (main numbers 1-45, Joker 1-20)
-  - **Loto 6/49 + Noroc** (main numbers 1-49, Noroc 7-digit number, optional)
-  - **Loto 5/40 + Super Noroc** (6 numbers drawn from 1-40, player picks 5, Super Noroc 6-digit number, optional)
+  - **Loto 6/49** (main numbers 1-49, Noroc optional)
+  - **Loto 5/40** (6 numbers drawn from 1-40, player picks 5, Super Noroc optional)
 - Data source: official results pages on loto.ro.
 - Out of scope: other lotteries/games.
 
@@ -150,9 +150,20 @@ LOTO_540_SEED=123 PYTHONPATH=src python scripts/generate_loto_540_picks.py
 ### Output Format
 
 - Joker: `1. 7, 11, 44, 45, 46 + J13`
-- Loto 6/49: `1. 1, 7, 18, 27, 35, 49 + N6026250`
-- Loto 5/40: `1. 3, 4, 7, 20, 36 + SN626628`
+- Loto 6/49: `1. 1, 7, 18, 27, 35, 49 + N6026250` (or without Noroc if `--no-noroc`)
+- Loto 5/40: `1. 3, 4, 7, 20, 36 + SN626628` (or without Super Noroc if `--no-super-noroc`)
 - Wheel: Shows coverage info, then numbered tickets
+
+## Automation
+
+The repository includes GitHub Actions workflows that run automatically:
+
+- **Generate Picks** (Sunday & Thursday at 10 AM UTC): Generates picks for all three games using smart strategy and sends them via Telegram
+- **Check Results** (Monday & Friday at 8 AM UTC): Compares generated picks against actual draw results
+
+To enable Telegram notifications, set repository secrets:
+- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
+- `TELEGRAM_CHAT_ID`: Your Telegram chat ID
 
 ## Data Sources
 
