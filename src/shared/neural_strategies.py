@@ -9,6 +9,7 @@ from typing import Literal
 
 from .game_config import GameConfig
 from .math_utils import softmax, one_hot
+from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE
 
 
 class SoftmaxModel:
@@ -40,13 +41,17 @@ class SoftmaxModel:
         targets_list: list[list[float]],
         epochs: int = 10,
         lr: float = 0.1,
+        sample_weights: list[float] | None = None,
     ) -> None:
         """Train the model using gradient descent."""
         for _ in range(epochs):
-            for inputs, target in zip(inputs_list, targets_list):
+            for idx, (inputs, target) in enumerate(zip(inputs_list, targets_list)):
+                weight = sample_weights[idx] if sample_weights is not None else 1.0
+                if weight == 0.0:
+                    continue
                 probs = self.predict_probs(inputs)
                 for i in range(self.output_size):
-                    error = probs[i] - target[i]
+                    error = (probs[i] - target[i]) * weight
                     for j in range(self.input_size):
                         self.weights[i][j] -= lr * error * inputs[j]
 
@@ -77,6 +82,9 @@ def generate_neural_picks(
     epochs: int = 10,
     lr: float = 0.1,
     architecture: Literal["softmax", "mlp"] = "softmax",
+    half_life: float = DEFAULT_HALF_LIFE,
+    draw_dates: list[str] | None = None,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> list[list[int]]:
     """Generate lottery picks using neural network prediction.
 
@@ -139,7 +147,22 @@ def generate_neural_picks(
         targets.append(y)
 
     # Train the model
-    model.train(inputs, targets, epochs=epochs, lr=lr)
+    sample_weights = None
+    if draw_dates:
+        from .recency import draw_weights
+
+        weights_by_draw = draw_weights(
+            len(draw_dates),
+            half_life,
+            draw_dates=draw_dates,
+            mode=half_life_mode,
+        )
+        sample_weights = weights_by_draw[1:]
+
+    if architecture == "softmax":
+        model.train(inputs, targets, epochs=epochs, lr=lr, sample_weights=sample_weights)
+    else:
+        model.train(inputs, targets, epochs=epochs, learning_rate=lr, sample_weights=sample_weights)
 
     # Generate picks from the trained model
     last_main, _ = draws[-1]
@@ -167,6 +190,9 @@ def score_neural_strategy(
     config: GameConfig,
     draws: list[tuple],
     rng: random.Random,
+    draw_dates: list[str] | None = None,
+    half_life: float = DEFAULT_HALF_LIFE,
+    half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
 ) -> int:
     """Score the neural strategy on historical data.
 
@@ -180,7 +206,15 @@ def score_neural_strategy(
         train_draws = draws[:idx]
         test_draw = draws[idx]
 
-        picks = generate_neural_picks(config, train_draws, 1, rng=rng)
+        picks = generate_neural_picks(
+            config,
+            train_draws,
+            1,
+            rng=rng,
+            half_life=half_life,
+            draw_dates=draw_dates[:idx] if draw_dates else None,
+            half_life_mode=half_life_mode,
+        )
         if picks:
             pick = picks[0]
             test_main, test_bonus = test_draw

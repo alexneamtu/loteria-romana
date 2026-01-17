@@ -67,6 +67,27 @@ class TestMLPModel(unittest.TestCase):
         # Loss should decrease
         self.assertLess(losses[-1], losses[0])
 
+    def test_mlp_train_sample_weights_all_ones_matches_unweighted(self):
+        inputs_list = [[1, 0], [0, 1]]
+        targets_list = [[1, 0], [0, 1]]
+
+        mlp_unweighted = MLPModel([2, 3, 2], rng=random.Random(0))
+        mlp_weighted = MLPModel([2, 3, 2], rng=random.Random(0))
+
+        losses_unweighted = mlp_unweighted.train(
+            inputs_list, targets_list, epochs=5, learning_rate=0.1
+        )
+        losses_weighted = mlp_weighted.train(
+            inputs_list,
+            targets_list,
+            epochs=5,
+            learning_rate=0.1,
+            sample_weights=[1.0, 1.0],
+        )
+
+        for unweighted, weighted in zip(losses_unweighted, losses_weighted):
+            self.assertAlmostEqual(unweighted, weighted, places=9)
+
     def test_mlp_multiple_hidden_layers(self):
         mlp = MLPModel([10, 8, 6, 4], activations=["relu", "relu", "softmax"], rng=random.Random(42))
         inputs = [1.0] * 10
@@ -167,6 +188,34 @@ class TestLSTMModel(unittest.TestCase):
 
         # Loss should decrease
         self.assertLess(losses[-1], losses[0])
+
+    def test_lstm_train_sample_weights_all_ones_matches_unweighted(self):
+        sequences = [
+            [[1, 0], [0, 1]],
+            [[0, 1], [1, 0]],
+        ]
+        targets = [[1, 0], [0, 1]]
+
+        lstm_unweighted = LSTMModel(
+            input_size=2, hidden_size=3, output_size=2, num_layers=1, rng=random.Random(0)
+        )
+        lstm_weighted = LSTMModel(
+            input_size=2, hidden_size=3, output_size=2, num_layers=1, rng=random.Random(0)
+        )
+
+        losses_unweighted = lstm_unweighted.train(
+            sequences, targets, epochs=5, learning_rate=0.1
+        )
+        losses_weighted = lstm_weighted.train(
+            sequences,
+            targets,
+            epochs=5,
+            learning_rate=0.1,
+            sample_weights=[1.0, 1.0],
+        )
+
+        for unweighted, weighted in zip(losses_unweighted, losses_weighted):
+            self.assertAlmostEqual(unweighted, weighted, places=9)
 
     def test_lstm_different_sequence_lengths(self):
         lstm = LSTMModel(

@@ -20,6 +20,14 @@ class TestNeural(unittest.TestCase):
         loss_after = model.loss(inputs, targets)
         self.assertLess(loss_after, loss_before)
 
+    def test_softmax_train_respects_sample_weights(self):
+        model = SoftmaxModel(input_size=2, output_size=2, rng=random.Random(0))
+        inputs = [[1, 0], [0, 1]]
+        targets = [[1, 0], [0, 1]]
+        before = [row[:] for row in model.weights]
+        model.train(inputs, targets, epochs=1, lr=0.5, sample_weights=[0.0, 0.0])
+        self.assertEqual(before, model.weights)
+
     def test_generate_neural_lines(self):
         draws = [
             ([1, 2, 3, 4, 5], 1),
