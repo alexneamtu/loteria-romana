@@ -31,6 +31,55 @@ For comprehensive documentation on lottery prediction methods, statistical analy
 - Data source: official results pages on loto.ro.
 - Out of scope: other lotteries/games.
 
+## Odds & Prize Tiers
+
+Odds are fixed by the game rules and are not influenced by historical data or any model.
+
+### Simplified Win Rules
+
+| Game | You win when... |
+| --- | --- |
+| Loto 6/49 | Match at least 3 of the 6 drawn numbers. |
+| Loto 5/40 | Match at least 3 of your 5 numbers among the 6 drawn numbers. |
+| Joker | Match 3+ main numbers, or match the Joker number with any count of main numbers (including 0). |
+
+### Loto 6/49 Prize Tiers
+
+| Category | Match rule | Odds | Chance |
+| --- | --- | --- | --- |
+| I (6) | Match 6 of 6 | 1 in 13,983,816 | 0.000007% |
+| II (5) | Match 5 of 6 | 1 in 54,201 | 0.001845% |
+| III (4) | Match 4 of 6 | 1 in 1,032 | 0.096862% |
+| IV (3) | Match 3 of 6 | 1 in 57 | 1.765040% |
+
+Any prize: 1 in 54 (1.863755%). Jackpot: 1 in 13,983,816 (0.000007%).
+
+### Loto 5/40 Prize Tiers
+
+| Category | Match rule | Odds | Chance |
+| --- | --- | --- | --- |
+| I (5) | Match 5 of 5 (from 6 drawn) | 1 in 109,668 | 0.000912% |
+| II (4) | Match 4 of 5 | 1 in 1,290 | 0.077507% |
+| III (3) | Match 3 of 5 | 1 in 59 | 1.705146% |
+
+Any prize: 1 in 56 (1.783565%). Jackpot: 1 in 109,668 (0.000912%).
+
+### Joker Prize Tiers
+
+| Category | Match rule | Odds | Chance |
+| --- | --- | --- | --- |
+| I (5+J) | Match 5 main + Joker | 1 in 24,435,180 | 0.000004% |
+| II (5) | Match 5 main | 1 in 1,286,062 | 0.000078% |
+| III (4+J) | Match 4 main + Joker | 1 in 122,176 | 0.000818% |
+| IV (4) | Match 4 main | 1 in 6,430 | 0.015551% |
+| V (3+J) | Match 3 main + Joker | 1 in 3,133 | 0.031921% |
+| VI (3) | Match 3 main | 1 in 165 | 0.606503% |
+| VII (2+J) | Match 2 main + Joker | 1 in 247 | 0.404335% |
+| VIII (1+J) | Match 1 main + Joker | 1 in 53 | 1.870050% |
+| IX (0+J) | Match Joker only | 1 in 37 | 2.692872% |
+
+Any prize: 1 in 18 (5.622132%). Jackpot: 1 in 24,435,180 (0.000004%).
+
 ## Features
 
 ### Advanced Strategies (Recommended)
@@ -77,7 +126,7 @@ For comprehensive documentation on lottery prediction methods, statistical analy
 
 ## Quickstart
 
-Run all tests (174 tests):
+Run all tests:
 
 ```bash
 PYTHONPATH=src python -m unittest -v
@@ -138,9 +187,15 @@ PYTHONPATH=src python scripts/generate_loto_649_picks.py --wheel 12 --wheel-guar
                        Other: auto, ensemble
 -v, --verbose          Show detailed strategy information
 --seed N               Set deterministic RNG seed
+--half-life N          Recency half-life in draws (or days)
+--half-life-mode MODE  Recency half-life mode: draws or days
 --wheel N              Generate wheeling system with N numbers
 --wheel-guarantee N    Minimum match guarantee for wheeling
 ```
+
+Environment:
+- `RECENCY_HALF_LIFE_MODE=draws|days` (defaults to draws)
+- `RECENCY_HALF_LIFE` (optional numeric half-life)
 
 ### Reproducibility
 
