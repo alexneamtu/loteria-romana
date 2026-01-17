@@ -13,7 +13,7 @@ def load_draws(path: Path) -> list[JokerDraw]:
         for row in reader:
             main = [int(row[f"main_{i}"]) for i in range(1, 6)]
             rows.append(JokerDraw(row["date"], sorted(main), int(row["joker"])))
-    return rows
+    return sorted(rows, key=lambda d: d.date)
 
 
 def append_draws(path: Path, draws: list[JokerDraw]) -> int:
