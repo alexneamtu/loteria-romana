@@ -306,3 +306,21 @@ scripts/              # CLI tools for generating picks
 - Lottery outcomes are random; no model can guarantee wins.
 - This project is for research and disciplined experimentation.
 - Use at your own risk; treat spending as entertainment, not investment.
+
+## IF YOU CHOOSE TO PLAY ANYWAY – PURCHASE GUIDE
+
+| Game  | Cost/Line | Slip Fee | Rec. Lines | Total Cost | Exp. Loss   | Break-Even Chance* |
+|-------|-----------|----------|------------|------------|-------------|--------------------|
+| 6/49  | 8.00 lei  | 0.50 lei | 1-5        | 8.50-40.50 | -6.94-34.70 | ~1-7%              |
+| Joker | 7.00 lei  | 0.50 lei | 1-10       | 7.50-70.50 | -5.05-50.50 | ~4-38%             |
+| 5/40  | 5.00 lei  | 0.50 lei | 1-3        | 5.50-15.50 | -4.41-13.23 | ~1-4%              |
+
+* Approximate chance of net profit (any prize > total spent), based on your lower-tier assumptions (5%/7%/15% return).
+
+RECOMMENDATION BY ENTERTAINMENT BUDGET:
+- Under 10 lei: 1 line Joker (7.50 lei, -5.05 expected loss, 4% break-even chance)
+- 10-40 lei: 5 lines Joker (35.50 lei, -25.25 loss, ~22% break-even) OR 1 line each game
+- 50+ lei: 10 lines Joker (70.50 lei, -50.50 loss, ~38% break-even) - still negative EV
+
+KEY INSIGHT:
+If you're buying a ticket anyway for fun, Joker gives you the most chances to hit something (5.6% vs 1.8% per line), so you'll feel the "entertainment value" more often than 6/49 or 5/40.
