@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from joker_model.picks import generate_picks
-from shared.recency import DEFAULT_HALF_LIFE
+from shared.recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE
 
 
 class TestPicks(unittest.TestCase):
@@ -39,7 +39,13 @@ class TestPicks(unittest.TestCase):
         with patch("joker_model.picks.pick_best_strategy") as pick_best:
             pick_best.return_value = "random"
             generate_picks(draws, rng=rng)
-            pick_best.assert_called_once_with(draws, rng=rng, half_life=DEFAULT_HALF_LIFE)
+            pick_best.assert_called_once_with(
+                draws,
+                rng=rng,
+                half_life=DEFAULT_HALF_LIFE,
+                half_life_mode=DEFAULT_HALF_LIFE_MODE,
+                draw_dates=None,
+            )
 
 
 if __name__ == "__main__":

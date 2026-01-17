@@ -45,6 +45,18 @@ class TestRecencyWeights(unittest.TestCase):
         with self.assertRaises(ValueError):
             draw_weights(2, 10.0, mode="days")
 
+    def test_resolve_recency_settings(self):
+        from shared.recency import resolve_recency_settings
+
+        half_life, mode = resolve_recency_settings(
+            half_life_cli=25,
+            half_life_env=None,
+            mode_cli=None,
+            mode_env="days",
+        )
+        self.assertEqual(half_life, 25.0)
+        self.assertEqual(mode, "days")
+
 
 if __name__ == "__main__":
     unittest.main()

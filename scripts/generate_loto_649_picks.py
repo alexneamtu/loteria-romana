@@ -25,39 +25,99 @@ from shared.advanced_strategies import (
     generate_coverage_picks,
     generate_pattern_picks,
 )
-from shared.recency import resolve_half_life
+from shared.recency import resolve_recency_settings
 
 # Loto 6/49 game parameters
 NUMBER_POOL = 49
 NUMBERS_TO_PICK = 6
 
 
-def get_strategy_by_name(name: str, half_life: float):
+def get_strategy_by_name(name: str, half_life: float, half_life_mode: str):
     """Get strategy instance by name."""
     strategies = {
-        "delta": DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        "hotcold": HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        "pairs": PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        "skip": SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        "sum": SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        "balance": BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        "delta": DeltaStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        "hotcold": HotColdStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        "pairs": PairStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        "skip": SkipGapStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        "sum": SumConstraintStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        "balance": BalanceStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
     }
     return strategies.get(name)
 
 
-def get_all_strategies(half_life: float):
+def get_all_strategies(half_life: float, half_life_mode: str):
     """Get all available strategies."""
     return [
-        DeltaStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        HotColdStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        PairStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        SkipGapStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        SumConstraintStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
-        BalanceStrategy(NUMBER_POOL, NUMBERS_TO_PICK, half_life=half_life),
+        DeltaStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        HotColdStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        PairStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        SkipGapStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        SumConstraintStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
+        BalanceStrategy(
+            NUMBER_POOL,
+            NUMBERS_TO_PICK,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+        ),
     ]
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(
         description="Generate Loto 6/49 picks using various strategies"
     )
@@ -75,7 +135,12 @@ def main():
         "-v", "--verbose", action="store_true", help="Show detailed strategy information"
     )
     parser.add_argument(
-        "--half-life", type=float, help="Recency half-life in draws"
+        "--half-life", type=float, help="Recency half-life in draws (or days)"
+    )
+    parser.add_argument(
+        "--half-life-mode",
+        choices=["draws", "days"],
+        help="Recency half-life mode (default: draws)",
     )
     parser.add_argument(
         "--wheel", type=int, metavar="N",
@@ -85,6 +150,11 @@ def main():
         "--wheel-guarantee", type=int, default=4,
         help="Minimum match guarantee for wheeling (default: 4)"
     )
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     url = "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html"
@@ -99,12 +169,18 @@ def main():
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     try:
-        half_life = resolve_half_life(args.half_life, os.getenv("RECENCY_HALF_LIFE"))
+        half_life, half_life_mode = resolve_recency_settings(
+            args.half_life,
+            os.getenv("RECENCY_HALF_LIFE"),
+            args.half_life_mode,
+            os.getenv("RECENCY_HALF_LIFE_MODE"),
+        )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
 
     rng = random.Random(seed) if seed is not None else random.SystemRandom()
     draw_tuples = [d.main_numbers for d in draws]
+    draw_dates = [d.date for d in draws]
 
     if args.verbose:
         print(f"Loaded {len(draws)} historical draws")
@@ -118,11 +194,15 @@ def main():
 
         # First get top numbers using ensemble
         ensemble = EnsembleVoter(
-            get_all_strategies(half_life),
+            get_all_strategies(half_life, half_life_mode),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
-        probs = ensemble.combine_probabilities(draw_tuples)
+        probs = ensemble.combine_probabilities(
+            draw_tuples,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
 
         # Select top N numbers
         number_probs = [(i + 1, p) for i, p in enumerate(probs)]
@@ -153,28 +233,86 @@ def main():
 
     # Strategy mode
     if args.strategy == "smart":
-        lines = generate_smart_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
+        lines = generate_smart_picks(
+            LOTO_649_CONFIG,
+            draw_tuples,
+            args.count,
+            rng,
+            half_life=half_life,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
     elif args.strategy == "optimal":
-        lines = generate_optimal_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
+        lines = generate_optimal_picks(
+            LOTO_649_CONFIG,
+            draw_tuples,
+            args.count,
+            rng,
+            half_life=half_life,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
     elif args.strategy == "coverage":
-        lines = generate_coverage_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
+        lines = generate_coverage_picks(
+            LOTO_649_CONFIG,
+            draw_tuples,
+            args.count,
+            rng,
+            half_life=half_life,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
     elif args.strategy == "pattern":
-        lines = generate_pattern_picks(LOTO_649_CONFIG, draw_tuples, args.count, rng, half_life=half_life)
+        lines = generate_pattern_picks(
+            LOTO_649_CONFIG,
+            draw_tuples,
+            args.count,
+            rng,
+            half_life=half_life,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
     elif args.strategy == "auto":
-        lines = generate_picks(draw_tuples, count=args.count, rng=rng, half_life=half_life)
+        lines = generate_picks(
+            draw_tuples,
+            count=args.count,
+            rng=rng,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+            draw_dates=draw_dates,
+        )
     elif args.strategy == "ensemble":
         ensemble = EnsembleVoter(
-            get_all_strategies(half_life),
+            get_all_strategies(half_life, half_life_mode),
             number_pool=NUMBER_POOL,
             numbers_to_pick=NUMBERS_TO_PICK,
         )
-        lines = ensemble.generate(draw_tuples, count=args.count, rng=rng)
+        lines = ensemble.generate(
+            draw_tuples,
+            count=args.count,
+            rng=rng,
+            draw_dates=draw_dates,
+            half_life_mode=half_life_mode,
+        )
     else:
-        strategy = get_strategy_by_name(args.strategy, half_life)
+        strategy = get_strategy_by_name(args.strategy, half_life, half_life_mode)
         if strategy:
-            lines = strategy.generate(draw_tuples, count=args.count, rng=rng)
+            lines = strategy.generate(
+                draw_tuples,
+                count=args.count,
+                rng=rng,
+                draw_dates=draw_dates,
+                half_life_mode=half_life_mode,
+            )
         else:
-            lines = generate_picks(draw_tuples, count=args.count, rng=rng)
+            lines = generate_picks(
+                draw_tuples,
+                count=args.count,
+                rng=rng,
+                half_life=half_life,
+                half_life_mode=half_life_mode,
+                draw_dates=draw_dates,
+            )
 
     for idx, main in enumerate(lines, 1):
         print(f"{idx}. {', '.join(str(n) for n in main)}")

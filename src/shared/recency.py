@@ -41,6 +41,17 @@ def resolve_half_life_mode(
     return mode
 
 
+def resolve_recency_settings(
+    half_life_cli,
+    half_life_env,
+    mode_cli,
+    mode_env,
+) -> tuple[float, str]:
+    half_life = resolve_half_life(half_life_cli, half_life_env)
+    mode = resolve_half_life_mode(mode_cli, mode_env)
+    return half_life, mode
+
+
 def _parse_draw_dates(draw_dates: list[str]) -> list[date]:
     try:
         return [date.fromisoformat(value) for value in draw_dates]
