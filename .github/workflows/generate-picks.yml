@@ -4,36 +4,14 @@ on:
   schedule:
     # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
     - cron: '0 10 * * 0,4'
-    # Check results: Monday and Friday at 6 AM UTC (8 AM EET) - morning after draws
-    - cron: '0 6 * * 1,5'
   workflow_dispatch:
-    inputs:
-      action:
-        description: 'Action to perform'
-        required: true
-        default: 'generate'
-        type: choice
-        options:
-          - generate
-          - check_results
-      max_retries:
-        description: 'Max retries for results check (default: 5)'
-        required: false
-        default: '5'
-        type: string
-      retry_delay:
-        description: 'Delay between retries in minutes (default: 10)'
-        required: false
-        default: '10'
-        type: string
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 jobs:
   generate-picks:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate' || github.event_name == 'schedule' && github.event.schedule == '0 10 * * 0,4'
     runs-on: ubuntu-latest
 
     steps:
@@ -97,97 +75,6 @@ jobs:
 
           _Generated with ensemble strategy_
           _Results will be checked tomorrow morning_"
-
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${MESSAGE}" \
-            -d parse_mode="Markdown"
-
-  check-results:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'check_results' || github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1,5'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Download latest picks artifact
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          workflow: generate-picks.yml
-          name: picks-.*
-          name_is_regexp: true
-          path: picks
-          search_artifacts: true
-          if_no_artifact_found: warn
-
-      - name: Move picks files
-        run: |
-          if [ -d "picks/picks-"* ]; then
-            mv picks/picks-*/* picks/ 2>/dev/null || true
-          fi
-          ls -la picks/ || echo "No picks directory"
-
-      - name: Check results (with retries)
-        id: results
-        timeout-minutes: 60
-        env:
-          MAX_RETRIES: ${{ github.event.inputs.max_retries || '5' }}
-          RETRY_DELAY_MINUTES: ${{ github.event.inputs.retry_delay || '10' }}
-        run: |
-          output=$(python scripts/check_results.py 2>&1)
-          echo "$output"
-
-          # Parse output
-          JOKER_DATE=$(echo "$output" | grep "^JOKER_DATE=" | cut -d= -f2-)
-          JOKER_WINNING=$(echo "$output" | grep "^JOKER_WINNING=" | cut -d= -f2-)
-          LOTO_DATE=$(echo "$output" | grep "^LOTO_DATE=" | cut -d= -f2-)
-          LOTO_WINNING=$(echo "$output" | grep "^LOTO_WINNING=" | cut -d= -f2-)
-          JOKER_RESULTS=$(echo "$output" | grep "^JOKER_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
-          LOTO_RESULTS=$(echo "$output" | grep "^LOTO_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
-
-          echo "JOKER_DATE=${JOKER_DATE}" >> $GITHUB_OUTPUT
-          echo "JOKER_WINNING=${JOKER_WINNING}" >> $GITHUB_OUTPUT
-          echo "LOTO_DATE=${LOTO_DATE}" >> $GITHUB_OUTPUT
-          echo "LOTO_WINNING=${LOTO_WINNING}" >> $GITHUB_OUTPUT
-
-          {
-            echo 'JOKER_RESULTS<<EOF'
-            echo "${JOKER_RESULTS}"
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
-
-          {
-            echo 'LOTO_RESULTS<<EOF'
-            echo "${LOTO_RESULTS}"
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
-
-      - name: Send results to Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          MESSAGE="🎲 *Draw Results*
-
-          🃏 *JOKER* (${{ steps.results.outputs.JOKER_DATE }})
-          Winning: ${{ steps.results.outputs.JOKER_WINNING }}
-
-          Your picks:
-          ${{ steps.results.outputs.JOKER_RESULTS }}
-
-          🎱 *LOTO 6/49* (${{ steps.results.outputs.LOTO_DATE }})
-          Winning: ${{ steps.results.outputs.LOTO_WINNING }}
-
-          Your picks:
-          ${{ steps.results.outputs.LOTO_RESULTS }}
-
-          _Better luck next time! 🍀_"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
