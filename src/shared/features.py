@@ -153,6 +153,36 @@ def compute_gap_distribution(
     return gaps
 
 
+def compute_weighted_gap_averages(
+    draws: list[list[int]],
+    pool_size: int,
+    weights: list[float] | None = None,
+) -> dict[int, float]:
+    """Compute weighted average gap per number.
+
+    More recent gaps can be weighted higher by providing draw weights.
+    """
+    if weights is None:
+        weights = [1.0] * len(draws)
+
+    gap_totals = {n: 0.0 for n in range(1, pool_size + 1)}
+    weight_totals = {n: 0.0 for n in range(1, pool_size + 1)}
+    last_seen = {n: -1 for n in range(1, pool_size + 1)}
+
+    for idx, (main, weight) in enumerate(zip(draws, weights)):
+        for num in main:
+            if last_seen[num] >= 0:
+                gap = idx - last_seen[num]
+                gap_totals[num] += gap * weight
+                weight_totals[num] += weight
+            last_seen[num] = idx
+
+    return {
+        n: (gap_totals[n] / weight_totals[n] if weight_totals[n] > 0 else 0.0)
+        for n in range(1, pool_size + 1)
+    }
+
+
 def compute_consecutive_frequency(draws: list[list[int]]) -> dict[int, int]:
     """Count how often consecutive numbers appear together.
 
