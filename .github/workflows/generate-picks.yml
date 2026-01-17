@@ -17,6 +17,10 @@ on:
           - generate
           - check_results
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   generate-picks:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate' || github.event_name == 'schedule' && github.event.schedule == '0 10 * * 0,4'
