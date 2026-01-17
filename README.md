@@ -204,6 +204,31 @@ Strategies apply exponential decay so newer draws influence scores more. The new
 - `draws` mode: half-life is measured in number of draws (assumes even spacing).
 - `days` mode: half-life is measured in calendar days between draw dates, so uneven gaps are handled correctly.
 
+### Educational EV Summary
+
+This is an educational snapshot using user-provided jackpots and explicit assumptions. It is not gambling advice.
+
+Solid Facts (No Assumptions Needed):
+- Expected value is negative for all three games at current jackpots (6/49: 16.24M lei, Joker: 47.99M lei, 5/40: 224K lei Cat I).
+- EV-optimal variants = 0 for both Thu and Sun (odds/prices identical by day).
+- Any-prize probabilities (per line): 6/49 ≈ 1.864%, Joker ≈ 5.622%, 5/40 ≈ 1.784%.
+
+Assumptions (User-Specified):
+- Lower-tier expected return as % of line price: 6/49 = 5%, Joker = 7%, 5/40 = 15%.
+- Single-winner jackpot (actual splits reduce EV further).
+- Slip fee 0.5 lei amortized per line.
+
+Net EV per Line (Under Assumptions):
+- 6/49: -6.94 lei (ROI -81.6%)
+- Joker: -5.05 lei (ROI -67.3%)
+- 5/40: -4.41 lei (ROI -80.2%)
+
+Implication (Assumption-Dependent):
+- Under these assumptions, Joker has the least-negative EV among the three.
+
+Cannot Compute Exactly (Data Gap):
+- Probability of net profit per N-line bundle requires exact payout tables (tier payouts or exact % per category).
+
 ### Reproducibility
 
 Fixed seed via argument:
