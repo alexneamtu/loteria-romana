@@ -1,0 +1,22 @@
+from pathlib import Path
+import unittest
+
+
+class TestGeneratePicksWorkflow(unittest.TestCase):
+    def setUp(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self.workflow = root / ".github/workflows/generate-picks.yml"
+        self.text = self.workflow.read_text()
+
+    def test_inputs_present(self):
+        for name in ("joker_lines", "loto649_lines", "loto540_lines"):
+            self.assertIn(name, self.text)
+
+    def test_default_values_present(self):
+        self.assertIn("default: '7'", self.text)
+        self.assertGreaterEqual(self.text.count("default: '0'"), 2)
+
+    def test_resolved_counts_used(self):
+        self.assertIn("steps.counts.outputs.joker_lines", self.text)
+        self.assertIn("steps.counts.outputs.loto649_lines", self.text)
+        self.assertIn("steps.counts.outputs.loto540_lines", self.text)
