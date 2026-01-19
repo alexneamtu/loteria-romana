@@ -7,19 +7,19 @@ on:
   workflow_dispatch:
     inputs:
       joker_lines:
-        description: 'Number of Joker lines to generate'
+        description: 'Number of Joker lines to generate (8 RON each)'
         required: false
-        default: '7'
+        default: '2'
         type: string
       loto649_lines:
-        description: 'Number of Loto 6/49 lines to generate'
+        description: 'Number of Loto 6/49 lines to generate (6 RON each)'
         required: false
         default: '0'
         type: string
       loto540_lines:
-        description: 'Number of Loto 5/40 lines to generate'
+        description: 'Number of Loto 5/40 lines to generate (4 RON each)'
         required: false
-        default: '0'
+        default: '8'
         type: string
 
 permissions:
@@ -62,9 +62,11 @@ jobs:
             echo "$input"
           }
 
-          joker=$(normalize "${{ github.event.inputs.joker_lines }}" "7")
+          # Default: Hybrid strategy for ~48 RON (8×5/40 + 2×Joker = 32+16 RON)
+          # Loto 5/40 has best any-win odds (~42% with 12 tickets)
+          joker=$(normalize "${{ github.event.inputs.joker_lines }}" "2")
           loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "0")
-          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "0")
+          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "8")
 
           echo "joker_lines=$joker" >> "$GITHUB_OUTPUT"
           echo "loto649_lines=$loto649" >> "$GITHUB_OUTPUT"
@@ -106,27 +108,35 @@ jobs:
           DATE=$(date +"%Y-%m-%d")
           MESSAGE="🎰 *Lottery Picks - ${DATE}*"
           has_picks=false
+          total_cost=0
 
           append_section() {
             local label="$1"
             local file="$2"
+            local cost_per="$3"
             local content
             content=$(cat "$file" 2>/dev/null || true)
             if [ -n "$content" ]; then
               has_picks=true
-              MESSAGE=$(printf '%s\n\n%s\n```\n%s\n```' "$MESSAGE" "$label" "$content")
+              line_count=$(echo "$content" | grep -c "^" || echo 0)
+              section_cost=$((line_count * cost_per))
+              total_cost=$((total_cost + section_cost))
+              MESSAGE=$(printf '%s\n\n%s (%d× = %d RON)\n```\n%s\n```' "$MESSAGE" "$label" "$line_count" "$section_cost" "$content")
             fi
           }
 
-          append_section "🃏 *JOKER*" "picks/joker.txt"
-          append_section "🎱 *LOTO 6/49*" "picks/loto649.txt"
-          append_section "🎯 *LOTO 5/40*" "picks/loto540.txt"
+          # Order by best any-win odds: 5/40 first, then 6/49, then Joker
+          append_section "🎯 *LOTO 5/40*" "picks/loto540.txt" 4
+          append_section "🎱 *LOTO 6/49*" "picks/loto649.txt" 6
+          append_section "🃏 *JOKER*" "picks/joker.txt" 8
 
           if [ "$has_picks" = false ]; then
             MESSAGE=$(printf '%s\n\n_No picks generated (all line counts set to 0)._' "$MESSAGE")
+          else
+            MESSAGE=$(printf '%s\n\n💰 *Total: %d RON*' "$MESSAGE" "$total_cost")
           fi
 
-          MESSAGE=$(printf '%s\n\n_Generated with smart strategy_\n_Results will be checked tomorrow morning_' "$MESSAGE")
+          MESSAGE=$(printf '%s\n\n_Strategy: Hybrid any-win optimized_\n_5/40 for frequent wins + Joker for jackpot_\n_Results checked tomorrow morning_' "$MESSAGE")
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
