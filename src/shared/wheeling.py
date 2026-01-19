@@ -555,3 +555,166 @@ class OptimizedWheelGenerator:
             "subcombinations_to_cover": comb(n, t),
             "subcombinations_per_ticket": comb(k, t),
         }
+
+
+# ============================================================================
+# ANY-WIN GUARANTEE WHEELS
+# ============================================================================
+# These functions help create wheels optimized for winning ANY prize (3+ matches)
+
+
+def create_any_win_wheel(
+    selected_numbers: list[int],
+    game: str = "loto_649",
+    min_guarantee: int = 3,
+    max_tickets: int | None = None,
+) -> dict:
+    """
+    Create a wheel that guarantees winning a prize if enough numbers hit.
+
+    For Loto 6/49:
+    - If you select 12 numbers and 6 are drawn: guaranteed jackpot coverage
+    - If you select 12 numbers and 4 are drawn: guaranteed Category IV (3 matches)
+
+    Args:
+        selected_numbers: Your chosen numbers to wheel
+        game: Game type ("loto_649", "loto_540", "joker")
+        min_guarantee: Minimum matches to guarantee (default: 3 for small prize)
+        max_tickets: Maximum tickets (None = generate all needed)
+
+    Returns:
+        Dict with wheel info, tickets, and guarantee explanation
+    """
+    game_configs = {
+        "loto_649": {"numbers_per_line": 6, "pool_size": 49, "prize_threshold": 3},
+        "loto_540": {"numbers_per_line": 5, "pool_size": 40, "prize_threshold": 3},
+        "joker": {"numbers_per_line": 5, "pool_size": 45, "prize_threshold": 3},
+    }
+
+    config = game_configs.get(game, game_configs["loto_649"])
+    numbers_per_line = config["numbers_per_line"]
+
+    n = len(selected_numbers)
+
+    if n < numbers_per_line:
+        return {
+            "error": f"Need at least {numbers_per_line} numbers for {game}",
+            "tickets": [],
+        }
+
+    # Generate the wheel
+    generator = OptimizedWheelGenerator(numbers_per_line, min_guarantee)
+    tickets = generator.generate(selected_numbers)
+
+    if max_tickets and len(tickets) > max_tickets:
+        tickets = tickets[:max_tickets]
+
+    # Verify coverage
+    is_valid, uncovered = verify_wheel_coverage(tickets, selected_numbers, min_guarantee)
+
+    # Calculate what guarantees this provides
+    guarantees = []
+    for hits in range(min_guarantee, n + 1):
+        if hits <= numbers_per_line:
+            # If X numbers hit and X <= numbers_per_line, we get X matches minimum
+            guarantees.append({
+                "numbers_hit": hits,
+                "guaranteed_matches": min(hits, min_guarantee),
+                "explanation": f"If {hits} of your numbers are drawn, you're guaranteed at least {min(hits, min_guarantee)} matches"
+            })
+        else:
+            # More numbers hit than fit in a ticket
+            guarantees.append({
+                "numbers_hit": hits,
+                "guaranteed_matches": min_guarantee,
+                "explanation": f"If {hits} of your numbers are drawn, you're guaranteed at least {min_guarantee} matches"
+            })
+
+    return {
+        "game": game,
+        "numbers_wheeled": len(selected_numbers),
+        "selected_numbers": sorted(selected_numbers),
+        "ticket_count": len(tickets),
+        "tickets": tickets,
+        "guarantee_level": min_guarantee,
+        "coverage_verified": is_valid,
+        "guarantees": guarantees,
+        "cost_estimate": {
+            "loto_649": len(tickets) * 6.0,
+            "loto_540": len(tickets) * 4.0,
+            "joker": len(tickets) * 8.0,
+        }.get(game, len(tickets) * 6.0),
+        "explanation": (
+            f"This wheel uses {len(tickets)} tickets to guarantee at least "
+            f"{min_guarantee} matches if {min_guarantee} or more of your "
+            f"{len(selected_numbers)} selected numbers are among the winners."
+        )
+    }
+
+
+def suggest_wheel_size(
+    budget: float,
+    game: str = "loto_649",
+    guarantee: int = 3,
+) -> dict:
+    """
+    Suggest optimal number of numbers to wheel based on budget.
+
+    Args:
+        budget: Total budget in RON
+        game: Game type
+        guarantee: Minimum match guarantee
+
+    Returns:
+        Suggestions for different wheel sizes
+    """
+    ticket_costs = {"loto_649": 6.0, "loto_540": 4.0, "joker": 8.0}
+    numbers_per_line = {"loto_649": 6, "loto_540": 5, "joker": 5}
+
+    cost = ticket_costs.get(game, 6.0)
+    k = numbers_per_line.get(game, 6)
+    max_tickets = int(budget / cost)
+
+    suggestions = []
+
+    # Try different wheel sizes
+    for n in range(k, min(20, k + 10)):  # From minimum to 20 numbers
+        min_tickets = compute_coverage_lower_bound(n, k, guarantee)
+        est_tickets = int(min_tickets * 1.3)
+
+        if est_tickets <= max_tickets:
+            suggestions.append({
+                "numbers_to_select": n,
+                "estimated_tickets": est_tickets,
+                "estimated_cost": est_tickets * cost,
+                "within_budget": True,
+                "numbers_needed_to_win": guarantee,
+            })
+        else:
+            suggestions.append({
+                "numbers_to_select": n,
+                "estimated_tickets": est_tickets,
+                "estimated_cost": est_tickets * cost,
+                "within_budget": False,
+                "numbers_needed_to_win": guarantee,
+            })
+
+    # Find optimal
+    within_budget = [s for s in suggestions if s["within_budget"]]
+    optimal = within_budget[-1] if within_budget else None
+
+    return {
+        "budget": budget,
+        "game": game,
+        "ticket_cost": cost,
+        "max_tickets": max_tickets,
+        "guarantee": guarantee,
+        "suggestions": suggestions,
+        "optimal": optimal,
+        "recommendation": (
+            f"With {budget} RON, you can wheel up to {optimal['numbers_to_select']} numbers "
+            f"with a {guarantee}-match guarantee using ~{optimal['estimated_tickets']} tickets."
+            if optimal else
+            f"Budget of {budget} RON is too small for a {guarantee}-match guarantee wheel."
+        )
+    }
