@@ -1,9 +1,9 @@
 name: Generate Lottery Picks
 
 on:
-  schedule:
-    # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
-    - cron: '0 10 * * 0,4'
+  # schedule:
+  #   # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
+  #   - cron: '0 10 * * 0,4'
   workflow_dispatch:
     inputs:
       joker_lines:
