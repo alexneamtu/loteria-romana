@@ -14,12 +14,12 @@ on:
       loto649_lines:
         description: 'Number of Loto 6/49 lines to generate (6 RON each)'
         required: false
-        default: '0'
+        default: '2'
         type: string
       loto540_lines:
         description: 'Number of Loto 5/40 lines to generate (4 RON each)'
         required: false
-        default: '8'
+        default: '2'
         type: string
 
 permissions:
@@ -62,10 +62,9 @@ jobs:
             echo "$input"
           }
 
-          # Default: Hybrid strategy for ~48 RON (8x5/40 + 2xJoker = 32+16 RON)
           joker=$(normalize "${{ github.event.inputs.joker_lines }}" "2")
-          loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "0")
-          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "8")
+          loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "2")
+          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "2")
 
           echo "joker_lines=$joker" >> "$GITHUB_OUTPUT"
           echo "loto649_lines=$loto649" >> "$GITHUB_OUTPUT"
