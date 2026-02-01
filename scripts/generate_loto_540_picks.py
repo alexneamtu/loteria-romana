@@ -25,6 +25,7 @@ from shared.advanced_strategies import (
     generate_coverage_picks,
     generate_pattern_picks,
 )
+from shared.ensemble_blend import generate_blended_picks
 from shared.recency import resolve_recency_settings
 
 # Loto 5/40 game parameters
@@ -127,9 +128,9 @@ def build_parser():
     )
     parser.add_argument(
         "-s", "--strategy",
-        choices=["auto", "smart", "optimal", "coverage", "pattern", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
-        default="smart",
-        help="Strategy to use for number selection (smart is recommended)",
+        choices=["auto", "blend", "smart", "optimal", "coverage", "pattern", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
+        default="blend",
+        help="Strategy to use for number selection (blend is recommended)",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed strategy information"
@@ -232,7 +233,17 @@ def main():
         return
 
     # Strategy mode
-    if args.strategy == "smart":
+    if args.strategy == "blend":
+        lines = generate_blended_picks(
+            LOTO_540_CONFIG,
+            draw_tuples,
+            args.count,
+            rng,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+            draw_dates=draw_dates,
+        )
+    elif args.strategy == "smart":
         lines = generate_smart_picks(
             LOTO_540_CONFIG,
             draw_tuples,
