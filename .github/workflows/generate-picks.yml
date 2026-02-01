@@ -118,40 +118,45 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           DATE=$(date +"%Y-%m-%d")
-          MESSAGE="🎰 *Lottery Picks - ${DATE}*"
-          has_picks=false
-          total_cost=0
+          STRATEGIES="blend smart optimal coverage pattern ensemble"
 
-          append_section() {
-            local label="$1"
-            local file="$2"
-            local cost_per="$3"
-            local content
-            content=$(cat "$file" 2>/dev/null || true)
-            if [ -n "$content" ]; then
-              has_picks=true
-              line_count=$(echo "$content" | grep -c "^" || echo 0)
-              section_cost=$((line_count * cost_per))
-              total_cost=$((total_cost + section_cost))
-              MESSAGE=$(printf '%s\n\n%s (%d× = %d RON)\n```\n%s\n```' "$MESSAGE" "$label" "$line_count" "$section_cost" "$content")
-            fi
+          send_message() {
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d text="$1" \
+              -d parse_mode="Markdown" > /dev/null
           }
 
-          # Show blend picks (the "played" strategy)
-          append_section "🎯 *LOTO 5/40*" "picks/loto540.txt" 4
-          append_section "🎱 *LOTO 6/49*" "picks/loto649.txt" 6
-          append_section "🃏 *JOKER*" "picks/joker.txt" 8
+          build_game_message() {
+            local emoji="$1"
+            local game_label="$2"
+            local game_prefix="$3"
+            local msg="${emoji} *${game_label} Picks - ${DATE}*"
 
-          if [ "$has_picks" = false ]; then
-            MESSAGE=$(printf '%s\n\n_No picks generated (all line counts set to 0)._' "$MESSAGE")
-          else
-            MESSAGE=$(printf '%s\n\n💰 *Total: %d RON*' "$MESSAGE" "$total_cost")
+            for strategy in $STRATEGIES; do
+              local file="picks/${game_prefix}_${strategy}.txt"
+              local content
+              content=$(cat "$file" 2>/dev/null || true)
+              if [ -n "$content" ]; then
+                msg=$(printf '%s\n\n*%s*\n```\n%s\n```' "$msg" "$strategy" "$content")
+              fi
+            done
+
+            echo "$msg"
+          }
+
+          # Send one message per game with all strategies labeled
+          if [ "${{ steps.counts.outputs.loto540_lines }}" != "0" ]; then
+            MSG=$(build_game_message "🎯" "LOTO 5/40" "loto540")
+            send_message "$MSG"
           fi
 
-          STRATEGIES_COUNT=$(ls picks/*_*.txt 2>/dev/null | sed 's/.*_//' | sed 's/\.txt//' | sort -u | wc -l | tr -d ' ')
-          MESSAGE=$(printf '%s\n\n_Strategy: Ensemble blend (played)_\n_%s strategies generated for comparison_\n_Results checked tomorrow morning_' "$MESSAGE" "$STRATEGIES_COUNT")
+          if [ "${{ steps.counts.outputs.loto649_lines }}" != "0" ]; then
+            MSG=$(build_game_message "🎱" "LOTO 6/49" "loto649")
+            send_message "$MSG"
+          fi
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${MESSAGE}" \
-            -d parse_mode="Markdown"
+          if [ "${{ steps.counts.outputs.joker_lines }}" != "0" ]; then
+            MSG=$(build_game_message "🃏" "JOKER" "joker")
+            send_message "$MSG"
+          fi
