@@ -73,7 +73,7 @@ jobs:
 
       - name: Generate picks for all strategies
         run: |
-          STRATEGIES="blend smart optimal coverage pattern ensemble auto"
+          STRATEGIES="blend smart optimal coverage pattern ensemble"
 
           for strategy in $STRATEGIES; do
             echo "=== Generating picks with strategy: $strategy ==="
