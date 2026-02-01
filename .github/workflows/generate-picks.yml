@@ -1,9 +1,9 @@
 name: Generate Lottery Picks
 
 on:
-  # schedule:
-  #   # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
-  #   - cron: '0 10 * * 0,4'
+  schedule:
+    # Generate picks: Sunday and Thursday at 10 AM UTC (12 PM EET) - before draws
+    - cron: '0 10 * * 0,4'
   workflow_dispatch:
     inputs:
       joker_lines:
@@ -62,8 +62,7 @@ jobs:
             echo "$input"
           }
 
-          # Default: Hybrid strategy for ~48 RON (8×5/40 + 2×Joker = 32+16 RON)
-          # Loto 5/40 has best any-win odds (~42% with 12 tickets)
+          # Default: Hybrid strategy for ~48 RON (8x5/40 + 2xJoker = 32+16 RON)
           joker=$(normalize "${{ github.event.inputs.joker_lines }}" "2")
           loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "0")
           loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "8")
@@ -72,23 +71,36 @@ jobs:
           echo "loto649_lines=$loto649" >> "$GITHUB_OUTPUT"
           echo "loto540_lines=$loto540" >> "$GITHUB_OUTPUT"
 
-      - name: Generate Joker picks
-        if: ${{ steps.counts.outputs.joker_lines != '0' }}
+      - name: Generate picks for all strategies
         run: |
-          picks=$(PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n ${{ steps.counts.outputs.joker_lines }} --seed ${{ github.run_id }})
-          printf '%s\n' "$picks" > picks/joker.txt
+          STRATEGIES="blend smart optimal coverage pattern ensemble auto"
 
-      - name: Generate Loto 6/49 picks
-        if: ${{ steps.counts.outputs.loto649_lines != '0' }}
-        run: |
-          picks=$(PYTHONPATH=src python scripts/generate_loto_649_picks.py -s smart -n ${{ steps.counts.outputs.loto649_lines }} --seed ${{ github.run_id }})
-          printf '%s\n' "$picks" > picks/loto649.txt
+          for strategy in $STRATEGIES; do
+            echo "=== Generating picks with strategy: $strategy ==="
 
-      - name: Generate Loto 5/40 picks
-        if: ${{ steps.counts.outputs.loto540_lines != '0' }}
-        run: |
-          picks=$(PYTHONPATH=src python scripts/generate_loto_540_picks.py -s smart -n ${{ steps.counts.outputs.loto540_lines }} --seed ${{ github.run_id }})
-          printf '%s\n' "$picks" > picks/loto540.txt
+            if [ "${{ steps.counts.outputs.joker_lines }}" != "0" ]; then
+              picks=$(PYTHONPATH=src python scripts/generate_joker_picks.py -s "$strategy" -n ${{ steps.counts.outputs.joker_lines }} --seed ${{ github.run_id }})
+              printf '%s\n' "$picks" > "picks/joker_${strategy}.txt"
+            fi
+
+            if [ "${{ steps.counts.outputs.loto649_lines }}" != "0" ]; then
+              picks=$(PYTHONPATH=src python scripts/generate_loto_649_picks.py -s "$strategy" -n ${{ steps.counts.outputs.loto649_lines }} --seed ${{ github.run_id }})
+              printf '%s\n' "$picks" > "picks/loto649_${strategy}.txt"
+            fi
+
+            if [ "${{ steps.counts.outputs.loto540_lines }}" != "0" ]; then
+              picks=$(PYTHONPATH=src python scripts/generate_loto_540_picks.py -s "$strategy" -n ${{ steps.counts.outputs.loto540_lines }} --seed ${{ github.run_id }})
+              printf '%s\n' "$picks" > "picks/loto540_${strategy}.txt"
+            fi
+          done
+
+          # Copy blend picks as the "played" picks for backward compatibility
+          cp picks/joker_blend.txt picks/joker.txt 2>/dev/null || true
+          cp picks/loto649_blend.txt picks/loto649.txt 2>/dev/null || true
+          cp picks/loto540_blend.txt picks/loto540.txt 2>/dev/null || true
+
+          echo "=== Generated picks summary ==="
+          ls -la picks/
 
       - name: Record picks date
         run: date +"%Y-%m-%d" > picks/date.txt
@@ -125,7 +137,7 @@ jobs:
             fi
           }
 
-          # Order by best any-win odds: 5/40 first, then 6/49, then Joker
+          # Show blend picks (the "played" strategy)
           append_section "🎯 *LOTO 5/40*" "picks/loto540.txt" 4
           append_section "🎱 *LOTO 6/49*" "picks/loto649.txt" 6
           append_section "🃏 *JOKER*" "picks/joker.txt" 8
@@ -136,7 +148,8 @@ jobs:
             MESSAGE=$(printf '%s\n\n💰 *Total: %d RON*' "$MESSAGE" "$total_cost")
           fi
 
-          MESSAGE=$(printf '%s\n\n_Strategy: Hybrid any-win optimized_\n_5/40 for frequent wins + Joker for jackpot_\n_Results checked tomorrow morning_' "$MESSAGE")
+          STRATEGIES_COUNT=$(ls picks/*_*.txt 2>/dev/null | sed 's/.*_//' | sed 's/\.txt//' | sort -u | wc -l | tr -d ' ')
+          MESSAGE=$(printf '%s\n\n_Strategy: Ensemble blend (played)_\n_%s strategies generated for comparison_\n_Results checked tomorrow morning_' "$MESSAGE" "$STRATEGIES_COUNT")
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \

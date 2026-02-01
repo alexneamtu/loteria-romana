@@ -1,9 +1,9 @@
 name: Check Lottery Results
 
 on:
-  # schedule:
-  #   # Check results: Monday and Friday at 6 AM UTC (8 AM EET) - morning after draws
-  #   - cron: '0 6 * * 1,5'
+  schedule:
+    # Check results: Monday and Friday at 6 AM UTC (8 AM EET) - morning after draws
+    - cron: '0 6 * * 1,5'
   workflow_dispatch:
     inputs:
       max_retries:
@@ -71,6 +71,9 @@ jobs:
           JOKER_RESULTS=$(echo "$output" | grep "^JOKER_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
           LOTO_RESULTS=$(echo "$output" | grep "^LOTO_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
           LOTO540_RESULTS=$(echo "$output" | grep "^LOTO540_RESULTS=" | cut -d= -f2- | sed 's/\\n/\n/g')
+          JOKER_COMPARISON=$(echo "$output" | grep "^JOKER_COMPARISON=" | cut -d= -f2- | sed 's/\\n/\n/g')
+          LOTO_COMPARISON=$(echo "$output" | grep "^LOTO_COMPARISON=" | cut -d= -f2- | sed 's/\\n/\n/g')
+          LOTO540_COMPARISON=$(echo "$output" | grep "^LOTO540_COMPARISON=" | cut -d= -f2- | sed 's/\\n/\n/g')
 
           echo "JOKER_DATE=${JOKER_DATE}" >> $GITHUB_OUTPUT
           echo "JOKER_WINNING=${JOKER_WINNING}" >> $GITHUB_OUTPUT
@@ -97,6 +100,24 @@ jobs:
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
+          {
+            echo 'JOKER_COMPARISON<<EOF'
+            echo "${JOKER_COMPARISON}"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo 'LOTO_COMPARISON<<EOF'
+            echo "${LOTO_COMPARISON}"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo 'LOTO540_COMPARISON<<EOF'
+            echo "${LOTO540_COMPARISON}"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
       - name: Send results to Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -107,24 +128,51 @@ jobs:
           🃏 *JOKER* (${{ steps.results.outputs.JOKER_DATE }})
           Winning: ${{ steps.results.outputs.JOKER_WINNING }}
 
-          Your picks:
+          Played (blend):
           ${{ steps.results.outputs.JOKER_RESULTS }}
 
           🎱 *LOTO 6/49* (${{ steps.results.outputs.LOTO_DATE }})
           Winning: ${{ steps.results.outputs.LOTO_WINNING }}
 
-          Your picks:
+          Played (blend):
           ${{ steps.results.outputs.LOTO_RESULTS }}
 
           🎯 *LOTO 5/40* (${{ steps.results.outputs.LOTO540_DATE }})
           Winning: ${{ steps.results.outputs.LOTO540_WINNING }}
 
-          Your picks:
-          ${{ steps.results.outputs.LOTO540_RESULTS }}
-
-          _Better luck next time! 🍀_"
+          Played (blend):
+          ${{ steps.results.outputs.LOTO540_RESULTS }}"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d text="${MESSAGE}" \
+            -d parse_mode="Markdown"
+
+      - name: Send strategy comparison to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          COMPARISON="📊 *Strategy Comparison*
+
+          🃏 *JOKER*
+          \`\`\`
+          ${{ steps.results.outputs.JOKER_COMPARISON }}
+          \`\`\`
+
+          🎱 *LOTO 6/49*
+          \`\`\`
+          ${{ steps.results.outputs.LOTO_COMPARISON }}
+          \`\`\`
+
+          🎯 *LOTO 5/40*
+          \`\`\`
+          ${{ steps.results.outputs.LOTO540_COMPARISON }}
+          \`\`\`
+
+          _Ranked by total matches across all lines_"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="${COMPARISON}" \
             -d parse_mode="Markdown"
