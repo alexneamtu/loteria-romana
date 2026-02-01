@@ -672,7 +672,12 @@ class SumConstraintStrategy:
 
         return m, max(s, 1.0)  # Ensure non-zero std
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
         """Get uniform probability distribution (sum constraint is applied during generation)."""
         return [1.0 / self.number_pool] * self.number_pool
 
@@ -849,7 +854,12 @@ class BalanceStrategy:
 
         return odd_probs, high_probs
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
         """Get uniform probability distribution (balance is applied during generation)."""
         return [1.0 / self.number_pool] * self.number_pool
 

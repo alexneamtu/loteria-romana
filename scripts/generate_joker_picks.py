@@ -25,6 +25,7 @@ from shared.advanced_strategies import (
     generate_coverage_picks,
     generate_pattern_picks,
 )
+from shared.ensemble_blend import generate_blended_picks
 from shared.recency import resolve_recency_settings
 
 # Joker game parameters
@@ -140,9 +141,9 @@ def build_parser():
     )
     parser.add_argument(
         "-s", "--strategy",
-        choices=["auto", "smart", "optimal", "coverage", "pattern", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
-        default="smart",
-        help="Strategy to use for number selection (smart is recommended)",
+        choices=["auto", "blend", "smart", "optimal", "coverage", "pattern", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
+        default="blend",
+        help="Strategy to use for number selection (blend is recommended)",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed strategy information"
@@ -247,7 +248,18 @@ def main():
         return
 
     # Strategy mode
-    if args.strategy == "smart":
+    if args.strategy == "blend":
+        main_picks = generate_blended_picks(
+            JOKER_CONFIG,
+            draw_main_only,
+            args.count,
+            rng,
+            half_life=half_life,
+            half_life_mode=half_life_mode,
+            draw_dates=draw_dates,
+        )
+        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+    elif args.strategy == "smart":
         # Best strategy - combines all techniques
         main_picks = generate_smart_picks(
             JOKER_CONFIG,

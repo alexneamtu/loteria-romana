@@ -1,20 +1,19 @@
 """Bayesian probability estimation for lottery numbers.
 
 This module implements Bayesian updating of number probabilities using
-historical lottery data. While mathematically sound, this approach
-cannot improve prediction because:
+a Dirichlet-Categorical conjugate model. It samples from the Dirichlet
+posterior via gamma variates, providing proper uncertainty quantification
+that goes beyond simple frequency analysis.
 
-1. The true prior is uniform (all numbers equally likely)
-2. The likelihood function is uninformative (each draw is independent)
-3. The posterior converges to uniform as data increases
-
-This module is provided for educational purposes to demonstrate
-proper Bayesian reasoning on random data.
+For truly random lotteries the posterior converges to uniform, but
+Dirichlet sampling adds exploration that can be valuable in an ensemble.
 """
 
 import math
 import random
 from dataclasses import dataclass
+
+from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE, draw_weights
 
 
 @dataclass
@@ -73,58 +72,56 @@ def compute_entropy(probs: list[float]) -> float:
 class BayesianScorer:
     """Bayesian probability scorer for lottery numbers.
 
-    Uses Dirichlet-Categorical model to estimate the probability
-    of each number. With sufficient data, this correctly learns
-    that all numbers are equally likely.
+    Uses Dirichlet-Categorical conjugate model with proper posterior
+    sampling via gamma variates.  Each call to generate() draws a fresh
+    probability vector from the Dirichlet posterior, adding exploration
+    that pure frequency analysis lacks.
     """
 
     def __init__(
         self,
         pool_size: int,
         numbers_to_pick: int,
+        secondary_pool: int = 0,
         alpha_prior: float = 1.0,
+        half_life: float = DEFAULT_HALF_LIFE,
+        half_life_mode: str = DEFAULT_HALF_LIFE_MODE,
     ):
-        """Initialize Bayesian scorer.
-
-        Args:
-            pool_size: Total numbers in pool
-            numbers_to_pick: Numbers per draw
-            alpha_prior: Prior concentration (1 = uniform)
-        """
         self.pool_size = pool_size
         self.numbers_to_pick = numbers_to_pick
+        self.secondary_pool = secondary_pool
         self.alpha_prior = alpha_prior
+        self.half_life = half_life
+        self.half_life_mode = half_life_mode
         self.name = "bayesian"
+        self.counts: list[float] = [0.0] * pool_size
 
-        # Initialize counts
-        self.counts = [0] * pool_size
+    def fit(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> BayesianResult:
+        """Update posterior with recency-weighted observed draws."""
+        mode = half_life_mode or self.half_life_mode
+        self.counts = [0.0] * self.pool_size
 
-    def fit(self, draws: list[list[int]]) -> BayesianResult:
-        """Update posterior with observed draws.
+        if draws:
+            weights = draw_weights(
+                len(draws),
+                self.half_life,
+                draw_dates=draw_dates,
+                mode=mode,
+            )
+            for draw, weight in zip(draws, weights):
+                for num in draw:
+                    if 1 <= num <= self.pool_size:
+                        self.counts[num - 1] += weight
 
-        Args:
-            draws: Historical lottery draws
-
-        Returns:
-            BayesianResult with posterior probabilities
-        """
-        # Count occurrences
-        self.counts = [0] * self.pool_size
-        for draw in draws:
-            for num in draw:
-                if 1 <= num <= self.pool_size:
-                    self.counts[num - 1] += 1
-
-        # Compute posterior
-        posterior = dirichlet_posterior(self.counts, self.alpha_prior)
-
-        # Compute posterior alpha for effective sample size
         posterior_alpha = [self.alpha_prior + c for c in self.counts]
-        effective_n = sum(posterior_alpha) - self.pool_size * self.alpha_prior
-
-        # Compute entropy
+        posterior = dirichlet_posterior(self.counts, self.alpha_prior)
+        effective_n = sum(self.counts)
         entropy = compute_entropy(posterior)
-        max_entropy = math.log(self.pool_size)
 
         return BayesianResult(
             posterior=posterior,
@@ -133,34 +130,56 @@ class BayesianScorer:
             entropy=entropy,
         )
 
-    def get_probabilities(self, draws: list[list[int]]) -> list[float]:
-        """Get posterior probabilities for each number."""
-        result = self.fit(draws)
+    def get_probabilities(
+        self,
+        draws: list[list[int]],
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
+    ) -> list[float]:
+        """Return posterior mean probabilities."""
+        result = self.fit(draws, draw_dates, half_life_mode)
         return result.posterior
+
+    def _sample_dirichlet(
+        self,
+        alpha: list[float],
+        rng: random.Random,
+    ) -> list[float]:
+        """Sample a probability vector from a Dirichlet distribution.
+
+        Uses the gamma-variate method: sample X_i ~ Gamma(alpha_i, 1)
+        then normalise so the vector sums to 1.
+        """
+        samples = [rng.gammavariate(a, 1.0) for a in alpha]
+        total = sum(samples)
+        if total == 0:
+            return [1.0 / len(alpha)] * len(alpha)
+        return [s / total for s in samples]
 
     def generate(
         self,
         draws: list[list[int]],
         count: int,
         rng: random.Random,
+        draw_dates: list[str] | None = None,
+        half_life_mode: str | None = None,
     ) -> list[list[int]]:
-        """Generate lines weighted by posterior probabilities.
+        """Generate lines by sampling from the Dirichlet posterior.
 
-        Note: This does not improve prediction because the posterior
-        correctly converges to uniform for truly random data.
+        Each line gets its own probability vector sampled from the
+        posterior, adding exploration beyond the posterior mean.
         """
-        result = self.fit(draws)
-        probs = result.posterior
-
-        lines = []
-        seen = set()
+        result = self.fit(draws, draw_dates, half_life_mode)
         numbers = list(range(1, self.pool_size + 1))
 
-        for _ in range(count * 10):
+        lines: list[list[int]] = []
+        seen: set[tuple[int, ...]] = set()
+
+        for _ in range(count * 20):
             if len(lines) >= count:
                 break
 
-            # Sample without replacement weighted by posterior
+            probs = self._sample_dirichlet(result.alpha, rng)
             line = self._weighted_sample(numbers, probs, rng)
             key = tuple(line)
             if key not in seen:
@@ -184,18 +203,14 @@ class BayesianScorer:
             if not available:
                 break
 
-            # Normalize available probabilities
             total = sum(available_probs)
             if total == 0:
                 break
 
             normalized = [p / total for p in available_probs]
-
-            # Sample one number
             pick = rng.choices(available, weights=normalized, k=1)[0]
             chosen.append(pick)
 
-            # Remove from available
             idx = available.index(pick)
             available.pop(idx)
             available_probs.pop(idx)

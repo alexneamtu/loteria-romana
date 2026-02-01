@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check lottery results and compare against saved picks."""
+"""Check lottery results and compare against saved picks from multiple strategies."""
 
 import os
 import re
@@ -49,17 +49,113 @@ def check_matches(picks: list[list[int]], winning_numbers: list[int]) -> list[di
     return results
 
 
-def format_result(pick: list[int], matched: list[int], count: int, total: int) -> str:
-    """Format a single result line."""
+def format_pick_result(pick: list[int], matched: list[int], count: int, total: int) -> str:
+    """Format a single pick result line."""
     pick_str = ", ".join(str(n) for n in pick)
     if count == 0:
-        return f"❌ {pick_str} - no matches"
-    elif count <= 2:
-        matched_str = ", ".join(str(n) for n in matched)
-        return f"🔸 {pick_str} - {count}/{total} matched: [{matched_str}]"
-    else:
-        matched_str = ", ".join(str(n) for n in matched)
-        return f"✅ {pick_str} - {count}/{total} matched: [{matched_str}]"
+        return f"  {pick_str} - no matches"
+    matched_str = ", ".join(str(n) for n in matched)
+    return f"  {pick_str} - {count}/{total} [{matched_str}]"
+
+
+def find_strategy_files(picks_dir: Path, game_prefix: str) -> dict[str, Path]:
+    """Find all strategy files for a game. Returns {strategy_name: file_path}."""
+    strategies = {}
+    for path in sorted(picks_dir.glob(f"{game_prefix}_*.txt")):
+        strategy = path.stem.replace(f"{game_prefix}_", "")
+        strategies[strategy] = path
+    return strategies
+
+
+def check_game_strategies(
+    picks_dir: Path,
+    game_prefix: str,
+    winning_numbers: list[int],
+    match_total: int,
+) -> dict[str, dict]:
+    """Check all strategy files for a game against winning numbers."""
+    strategy_files = find_strategy_files(picks_dir, game_prefix)
+    strategy_results = {}
+
+    for strategy, path in strategy_files.items():
+        content = path.read_text().strip()
+        if not content:
+            continue
+        picks = parse_picks(content)
+        results = check_matches(picks, winning_numbers)
+        score = sum(r["count"] for r in results)
+        best_match = max((r["count"] for r in results), default=0)
+        strategy_results[strategy] = {
+            "results": results,
+            "score": score,
+            "best_match": best_match,
+        }
+
+    return strategy_results
+
+
+def build_game_message(
+    emoji: str,
+    game_label: str,
+    winning_str: str,
+    draw_date: str,
+    strategy_results: dict[str, dict],
+    match_total: int,
+) -> str:
+    """Build a Telegram message for one game with all strategy results."""
+    lines = [f"{emoji} *{game_label} Results - {draw_date}*"]
+    lines.append(f"Winning: `{winning_str}`")
+
+    if not strategy_results:
+        lines.append("\n_No picks found to compare_")
+        return "\n".join(lines)
+
+    ranked = sorted(
+        strategy_results.items(),
+        key=lambda item: (item[1]["score"], item[1]["best_match"]),
+        reverse=True,
+    )
+
+    for strategy, data in ranked:
+        lines.append(f"\n*{strategy}* ({data['score']} matches)")
+        lines.append("```")
+        for r in data["results"]:
+            lines.append(
+                format_pick_result(r["pick"], r["matched"], r["count"], match_total)
+            )
+        lines.append("```")
+
+    return "\n".join(lines)
+
+
+def build_comparison_message(
+    game_results: list[tuple[str, str, dict[str, dict], int]],
+) -> str:
+    """Build a summary comparison message across all games."""
+    lines = ["📊 *Strategy Ranking*"]
+
+    for emoji, game_label, strategy_results, match_total in game_results:
+        if not strategy_results:
+            continue
+
+        lines.append(f"\n{emoji} *{game_label}*")
+        lines.append("```")
+
+        ranked = sorted(
+            strategy_results.items(),
+            key=lambda item: (item[1]["score"], item[1]["best_match"]),
+            reverse=True,
+        )
+
+        for i, (strategy, data) in enumerate(ranked):
+            best = data["best_match"]
+            score = data["score"]
+            medal = ["🥇", "🥈", "🥉"][i] if i < 3 else "  "
+            lines.append(f"{medal} {strategy}: {score} total (best {best}/{match_total})")
+
+        lines.append("```")
+
+    return "\n".join(lines)
 
 
 def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
@@ -83,16 +179,10 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
     for attempt in range(max_retries):
         log(f"\n--- Attempt {attempt + 1}/{max_retries} ---")
 
-        # Clear cache to force fresh fetch
-        if joker_cache.exists():
-            log("Clearing Joker cache...")
-            joker_cache.unlink()
-        if loto_cache.exists():
-            log("Clearing Loto 6/49 cache...")
-            loto_cache.unlink()
-        if loto540_cache.exists():
-            log("Clearing Loto 5/40 cache...")
-            loto540_cache.unlink()
+        for cache in [joker_cache, loto_cache, loto540_cache]:
+            if cache.exists():
+                log(f"Clearing cache: {cache}")
+                cache.unlink()
 
         try:
             log("Fetching Joker results from loto.ro...")
@@ -122,152 +212,99 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
                 continue
             raise
 
-        # Load and check if we have recent results
         log("Loading draws from CSV...")
         joker_draws = load_joker(joker_csv)
         loto_draws = load_loto649(loto_csv)
         loto540_draws = load_loto540(loto540_csv)
 
-        log(f"Joker draws loaded: {len(joker_draws) if joker_draws else 0}")
-        log(f"Loto 6/49 draws loaded: {len(loto_draws) if loto_draws else 0}")
-        log(f"Loto 5/40 draws loaded: {len(loto540_draws) if loto540_draws else 0}")
-
-        if joker_draws:
-            log(f"Latest Joker draw date: {joker_draws[-1].date}")
-        if loto_draws:
-            log(f"Latest Loto 6/49 draw date: {loto_draws[-1].date}")
-        if loto540_draws:
-            log(f"Latest Loto 5/40 draw date: {loto540_draws[-1].date}")
+        log(f"Joker: {len(joker_draws) if joker_draws else 0} draws")
+        log(f"Loto 6/49: {len(loto_draws) if loto_draws else 0} draws")
+        log(f"Loto 5/40: {len(loto540_draws) if loto540_draws else 0} draws")
 
         joker_ok = bool(joker_draws) and str(joker_draws[-1].date) >= yesterday
         loto_ok = bool(loto_draws) and str(loto_draws[-1].date) >= yesterday
         loto540_ok = bool(loto540_draws) and str(loto540_draws[-1].date) >= yesterday
 
-        log(f"Joker results recent enough: {joker_ok}")
-        log(f"Loto 6/49 results recent enough: {loto_ok}")
-        log(f"Loto 5/40 results recent enough: {loto540_ok}")
-
         if joker_ok or loto_ok or loto540_ok:
-            log("\n=== Recent results found! Proceeding with comparison ===")
+            log("\n=== Recent results found! ===")
             return joker_draws, loto_draws, loto540_draws
 
         if attempt < max_retries - 1:
-            log(f"Results not yet available for {yesterday}. Waiting {delay_minutes} minute(s)...")
+            log(f"Results not yet available. Waiting {delay_minutes} minute(s)...")
             time.sleep(delay_minutes * 60)
 
-    log(f"\nWARNING: Could not find results from {yesterday} after {max_retries} attempts")
+    log(f"\nWARNING: No results from {yesterday} after {max_retries} attempts")
     log("Proceeding with latest available results...")
     return load_joker(joker_csv), load_loto649(loto_csv), load_loto540(loto540_csv)
 
 
+def process_game(
+    game_key: str,
+    emoji: str,
+    game_label: str,
+    draws,
+    picks_dir: Path,
+    match_total: int,
+) -> tuple[str, str, str, dict[str, dict]]:
+    """Process one game. Returns (date, winning_str, message, strategy_results)."""
+    if not draws:
+        log(f"No {game_label} draws available")
+        msg = f"{emoji} *{game_label} Results*\n_No results available_"
+        return "N/A", "N/A", msg, {}
+
+    latest = draws[-1]
+    winning = latest.main_numbers
+    draw_date = str(latest.date)
+
+    if hasattr(latest, "joker"):
+        winning_str = f"{', '.join(str(n) for n in winning)} + J{latest.joker}"
+    else:
+        winning_str = ", ".join(str(n) for n in winning)
+
+    log(f"Latest {game_label}: {draw_date} - {winning_str}")
+
+    strategy_results = check_game_strategies(picks_dir, game_key, winning, match_total)
+
+    msg = build_game_message(
+        emoji, game_label, winning_str, draw_date,
+        strategy_results, match_total,
+    )
+
+    return draw_date, winning_str, msg, strategy_results
+
+
 def main():
     """Main entry point."""
-    # Get settings from environment or use defaults
     max_retries = int(os.environ.get("MAX_RETRIES", "3"))
     delay_minutes = int(os.environ.get("RETRY_DELAY_MINUTES", "1"))
     picks_dir = Path(os.environ.get("PICKS_DIR", "picks"))
+    output_dir = Path(os.environ.get("RESULTS_DIR", "results"))
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     joker_draws, loto_draws, loto540_draws = fetch_results_with_retry(
-        max_retries=max_retries, delay_minutes=delay_minutes
+        max_retries=max_retries, delay_minutes=delay_minutes,
     )
 
     log("\n=== Processing Results ===")
 
-    if not joker_draws:
-        log("No Joker draws available")
-        print("JOKER_DATE=N/A")
-        print("JOKER_WINNING=No results available")
-        print("JOKER_RESULTS=Could not fetch Joker results")
-    else:
-        latest_joker = joker_draws[-1]
-        log(f"Latest Joker: {latest_joker.date} - {latest_joker.main_numbers} + J{latest_joker.joker}")
-        print(f"JOKER_DATE={latest_joker.date}")
-        print(f"JOKER_WINNING={', '.join(str(n) for n in latest_joker.main_numbers)} + J{latest_joker.joker}")
+    games = [
+        ("joker", "🃏", "JOKER", joker_draws, 5),
+        ("loto649", "🎱", "LOTO 6/49", loto_draws, 6),
+        ("loto540", "🎯", "LOTO 5/40", loto540_draws, 5),
+    ]
 
-    if not loto_draws:
-        log("No Loto 6/49 draws available")
-        print("LOTO_DATE=N/A")
-        print("LOTO_WINNING=No results available")
-        print("LOTO_RESULTS=Could not fetch Loto 6/49 results")
-    else:
-        latest_loto = loto_draws[-1]
-        log(f"Latest Loto 6/49: {latest_loto.date} - {latest_loto.main_numbers}")
-        print(f"LOTO_DATE={latest_loto.date}")
-        print(f"LOTO_WINNING={', '.join(str(n) for n in latest_loto.main_numbers)}")
+    all_game_results = []
+    for game_key, emoji, game_label, draws, match_total in games:
+        draw_date, winning_str, msg, strategy_results = process_game(
+            game_key, emoji, game_label, draws, picks_dir, match_total,
+        )
+        (output_dir / f"{game_key}.txt").write_text(msg, encoding="utf-8")
+        all_game_results.append((emoji, game_label, strategy_results, match_total))
+        log(f"Wrote {game_key} results message")
 
-    if not loto540_draws:
-        log("No Loto 5/40 draws available")
-        print("LOTO540_DATE=N/A")
-        print("LOTO540_WINNING=No results available")
-        print("LOTO540_RESULTS=Could not fetch Loto 5/40 results")
-    else:
-        latest_540 = loto540_draws[-1]
-        log(f"Latest Loto 5/40: {latest_540.date} - {latest_540.main_numbers}")
-        print(f"LOTO540_DATE={latest_540.date}")
-        print(f"LOTO540_WINNING={', '.join(str(n) for n in latest_540.main_numbers)}")
-
-    # Read saved picks
-    log("\n=== Loading Saved Picks ===")
-    joker_picks_file = picks_dir / "joker.txt"
-    loto_picks_file = picks_dir / "loto649.txt"
-    loto540_picks_file = picks_dir / "loto540.txt"
-
-    log(f"Joker picks file exists: {joker_picks_file.exists()}")
-    log(f"Loto 6/49 picks file exists: {loto_picks_file.exists()}")
-    log(f"Loto 5/40 picks file exists: {loto540_picks_file.exists()}")
-
-    if joker_picks_file.exists():
-        content = joker_picks_file.read_text()
-        log(f"Joker picks content:\n{content}")
-        if joker_draws:
-            joker_picks = parse_picks(content)
-            log(f"Parsed {len(joker_picks)} Joker picks")
-            joker_results = check_matches(joker_picks, joker_draws[-1].main_numbers)
-
-            output_lines = []
-            for r in joker_results:
-                output_lines.append(format_result(r["pick"], r["matched"], r["count"], 5))
-            print("JOKER_RESULTS=" + "\\n".join(output_lines))
-        else:
-            print("JOKER_RESULTS=No draws to compare against")
-    else:
-        print("JOKER_RESULTS=No picks found to compare")
-
-    if loto_picks_file.exists():
-        content = loto_picks_file.read_text()
-        log(f"Loto 6/49 picks content:\n{content}")
-        if loto_draws:
-            loto_picks = parse_picks(content)
-            log(f"Parsed {len(loto_picks)} Loto 6/49 picks")
-            loto_results = check_matches(loto_picks, loto_draws[-1].main_numbers)
-
-            output_lines = []
-            for r in loto_results:
-                output_lines.append(format_result(r["pick"], r["matched"], r["count"], 6))
-            print("LOTO_RESULTS=" + "\\n".join(output_lines))
-        else:
-            print("LOTO_RESULTS=No draws to compare against")
-    else:
-        print("LOTO_RESULTS=No picks found to compare")
-
-    if loto540_picks_file.exists():
-        content = loto540_picks_file.read_text()
-        log(f"Loto 5/40 picks content:\n{content}")
-        if loto540_draws:
-            loto540_picks = parse_picks(content)
-            log(f"Parsed {len(loto540_picks)} Loto 5/40 picks")
-            # In 5/40, player picks 5 numbers, lottery draws 6
-            loto540_results = check_matches(loto540_picks, loto540_draws[-1].main_numbers)
-
-            output_lines = []
-            for r in loto540_results:
-                # Show matches out of 5 (player's picks)
-                output_lines.append(format_result(r["pick"], r["matched"], r["count"], 5))
-            print("LOTO540_RESULTS=" + "\\n".join(output_lines))
-        else:
-            print("LOTO540_RESULTS=No draws to compare against")
-    else:
-        print("LOTO540_RESULTS=No picks found to compare")
+    comparison = build_comparison_message(all_game_results)
+    (output_dir / "comparison.txt").write_text(comparison, encoding="utf-8")
+    log("Wrote comparison message")
 
     log("\n=== Results Checker Completed ===")
 
