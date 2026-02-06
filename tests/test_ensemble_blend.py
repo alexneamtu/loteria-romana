@@ -136,5 +136,57 @@ class TestDeepLearningBlend(unittest.TestCase):
             self.assertEqual(len(pick), 3)
 
 
+class TestEnhancedBiasIntegration(unittest.TestCase):
+    def _make_draws(self, config, count=50):
+        rng = random.Random(0)
+        pool = list(config.pool_range)
+        return [sorted(rng.sample(pool, config.numbers_drawn)) for _ in range(count)]
+
+    def test_blend_runs_with_drift_detection(self):
+        draws = self._make_draws(JOKER_CONFIG, count=100)
+        rng = random.Random(42)
+        lines = generate_blended_picks(JOKER_CONFIG, draws, 5, rng)
+        self.assertEqual(len(lines), 5)
+
+    def test_blend_handles_regime_aware_scoring(self):
+        draws = self._make_draws(JOKER_CONFIG, count=200)
+        rng = random.Random(42)
+        lines = generate_blended_picks(JOKER_CONFIG, draws, 5, rng)
+        self.assertEqual(len(lines), 5)
+        for line in lines:
+            self.assertEqual(len(line), JOKER_CONFIG.numbers_to_pick)
+            self.assertTrue(all(n in JOKER_CONFIG.pool_range for n in line))
+
+
+class TestPortfolioOptimizedPicks(unittest.TestCase):
+    def _make_draws(self, config, count=50):
+        rng = random.Random(0)
+        pool = list(config.pool_range)
+        return [sorted(rng.sample(pool, config.numbers_drawn)) for _ in range(count)]
+
+    def test_optimized_picks_correct_count(self):
+        draws = self._make_draws(JOKER_CONFIG)
+        rng = random.Random(42)
+        lines = generate_blended_picks(JOKER_CONFIG, draws, 10, rng)
+        self.assertEqual(len(lines), 10)
+
+    def test_optimized_picks_diverse(self):
+        from shared.portfolio import diversity_score
+        draws = self._make_draws(JOKER_CONFIG, count=100)
+        rng = random.Random(42)
+        lines = generate_blended_picks(JOKER_CONFIG, draws, 10, rng)
+        score = diversity_score(lines, JOKER_CONFIG.pool_size)
+        self.assertGreater(score, 0.3)
+
+    def test_all_games_produce_valid_picks(self):
+        for config in [JOKER_CONFIG, LOTO_649_CONFIG, LOTO_540_CONFIG]:
+            draws = self._make_draws(config, count=50)
+            rng = random.Random(42)
+            lines = generate_blended_picks(config, draws, 5, rng)
+            self.assertEqual(len(lines), 5)
+            for line in lines:
+                self.assertEqual(len(line), config.numbers_to_pick)
+
+
 if __name__ == "__main__":
     unittest.main()

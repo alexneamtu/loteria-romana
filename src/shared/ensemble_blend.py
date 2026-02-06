@@ -22,6 +22,10 @@ from .game_strategies import (
 from .genetic import GeneticStrategy
 from .math_utils import softmax
 from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE
+from .drift_detection import adwin_detect_drift
+from .runs_test import per_number_runs_analysis
+from .regime import detect_regimes
+from .portfolio import optimize_ticket_portfolio
 
 try:
     from .gradient_boost import GradientBoostStrategy, SKLEARN_AVAILABLE as _GB_AVAILABLE
@@ -132,6 +136,44 @@ def _allocate_counts(weights: dict[str, float], total: int) -> dict[str, int]:
     return floored
 
 
+def _compute_enhanced_bias(
+    draws: list[list[int]],
+    pool_size: int,
+    numbers_drawn: int,
+) -> dict[str, float]:
+    """Compute enhanced bias signals from multiple detectors.
+
+    Returns a dict of bias adjustments:
+    - 'drift_factor': 0.0 to 1.0 (1.0 = strong drift detected)
+    - 'runs_factor': 0.0 to 1.0 (1.0 = many non-random numbers)
+    - 'regime_recency': fraction of draws in most recent regime
+    """
+    result = {"drift_factor": 0.0, "runs_factor": 0.0, "regime_recency": 1.0}
+
+    if len(draws) < 30:
+        return result
+
+    # Drift detection on draw sums
+    sums = [sum(d) for d in draws]
+    drift = adwin_detect_drift(sums)
+    if drift.drift_detected:
+        result["drift_factor"] = min(drift.statistic / 3.0, 1.0)
+
+    # Runs test: fraction of numbers with significant streaks
+    runs_reports = per_number_runs_analysis(draws, pool_size)
+    significant_count = sum(1 for r in runs_reports if r.significant)
+    result["runs_factor"] = significant_count / pool_size
+
+    # Regime detection: focus on most recent regime
+    boundaries = detect_regimes(sums, min_segment_size=30)
+    if boundaries:
+        last_boundary = max(b.index for b in boundaries)
+        recent_fraction = (len(draws) - last_boundary) / len(draws)
+        result["regime_recency"] = recent_fraction
+
+    return result
+
+
 def generate_blended_picks(
     config: GameConfig,
     draws: list[list[int]],
@@ -171,6 +213,8 @@ def generate_blended_picks(
         draws, config.pool_size, config.numbers_drawn,
     )
 
+    enhanced = _compute_enhanced_bias(draws, config.pool_size, config.numbers_drawn)
+
     bayesian = BayesianScorer(
         config.pool_size,
         config.numbers_to_pick,
@@ -196,8 +240,11 @@ def generate_blended_picks(
         generations=20,
     )
 
-    scoring_draws = draws[-100:] if len(draws) > 100 else draws
-    scoring_dates = draw_dates[-100:] if draw_dates and len(draw_dates) > 100 else draw_dates
+    # Use regime-aware scoring window
+    regime_window = int(len(draws) * enhanced["regime_recency"])
+    scoring_window = max(min(regime_window, 100), 30)
+    scoring_draws = draws[-scoring_window:] if len(draws) > scoring_window else draws
+    scoring_dates = draw_dates[-scoring_window:] if draw_dates and len(draw_dates) > scoring_window else draw_dates
 
     scores = {
         "random": max(_score_random(config, scoring_draws, rng), 1),
@@ -273,6 +320,17 @@ def generate_blended_picks(
     if not bias.significant:
         random_boost = 0.3 * (1.0 - bias.bias_strength)
         weights["random"] += random_boost
+
+    # Enhanced bias adjustments
+    if enhanced["drift_factor"] > 0.5:
+        for strat in ["frequency", "bayesian"]:
+            if strat in weights:
+                weights[strat] *= 1.0 + enhanced["drift_factor"] * 0.3
+
+    if enhanced["runs_factor"] > 0.1:
+        for strat in ["cooccurrence", "genetic"]:
+            if strat in weights:
+                weights[strat] *= 1.0 + enhanced["runs_factor"] * 0.5
 
     total_w = sum(weights.values())
     weights = {k: v / total_w for k, v in weights.items()}
@@ -393,11 +451,17 @@ def generate_blended_picks(
                         lines.append(pick)
                         added += 1
 
-    while len(lines) < count:
+    # Generate extra random candidates for portfolio selection
+    target = count + max(count // 2, 3)
+    while len(lines) < target:
         extra = generate_random_picks(config, 1, rng)
         key = tuple(extra[0])
         if key not in seen:
             seen.add(key)
             lines.append(extra[0])
+
+    # Apply portfolio optimization for diversity
+    if len(lines) > count:
+        lines = optimize_ticket_portfolio(lines, count, config.pool_size)
 
     return lines[:count]
