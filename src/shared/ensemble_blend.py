@@ -28,6 +28,16 @@ try:
 except ImportError:
     _GB_AVAILABLE = False
 
+try:
+    from .lstm_strategy import LSTMStrategy
+    from .tcn_strategy import TCNStrategy
+    from .transformer_strategy import TransformerStrategy
+    from .normalizing_flows import NormalizingFlowStrategy
+    import torch
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+
 
 def _score_random(
     config: GameConfig,
@@ -230,6 +240,33 @@ def generate_blended_picks(
             1,
         )
 
+    if _TORCH_AVAILABLE:
+        lstm_scoring = LSTMStrategy(
+            config.pool_size, config.numbers_to_pick, epochs=5, seq_len=10,
+        )
+        tcn_scoring = TCNStrategy(
+            config.pool_size, config.numbers_to_pick, epochs=5, seq_len=10,
+        )
+        xfmr_scoring = TransformerStrategy(
+            config.pool_size, config.numbers_to_pick, epochs=5, seq_len=10,
+        )
+        nf_scoring = NormalizingFlowStrategy(
+            config.pool_size, config.numbers_to_pick, epochs=10,
+        )
+
+        for strat_name, strat in [
+            ("lstm", lstm_scoring),
+            ("tcn", tcn_scoring),
+            ("transformer", xfmr_scoring),
+            ("normalizing_flow", nf_scoring),
+        ]:
+            scores[strat_name] = max(
+                _score_strategy_object(
+                    config, scoring_draws, strat, rng, scoring_dates, half_life_mode,
+                ),
+                1,
+            )
+
     raw_weights = softmax([float(s) for s in scores.values()])
     weights = dict(zip(scores.keys(), raw_weights))
 
@@ -329,6 +366,32 @@ def generate_blended_picks(
                 seen.add(key)
                 lines.append(pick)
                 added_gb += 1
+
+    if _TORCH_AVAILABLE:
+        lstm_gen = LSTMStrategy(config.pool_size, config.numbers_to_pick)
+        tcn_gen = TCNStrategy(config.pool_size, config.numbers_to_pick)
+        xfmr_gen = TransformerStrategy(config.pool_size, config.numbers_to_pick)
+        nf_gen = NormalizingFlowStrategy(config.pool_size, config.numbers_to_pick)
+
+        for strat_name, strat in [
+            ("lstm", lstm_gen),
+            ("tcn", tcn_gen),
+            ("transformer", xfmr_gen),
+            ("normalizing_flow", nf_gen),
+        ]:
+            if strat_name in allocation:
+                strat_lines = strat.generate(
+                    draws, allocation.get(strat_name, 0) + count, rng,
+                )
+                added = 0
+                for pick in strat_lines:
+                    if added >= allocation.get(strat_name, 0):
+                        break
+                    key = tuple(pick)
+                    if key not in seen:
+                        seen.add(key)
+                        lines.append(pick)
+                        added += 1
 
     while len(lines) < count:
         extra = generate_random_picks(config, 1, rng)
