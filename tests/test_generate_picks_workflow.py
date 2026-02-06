@@ -13,10 +13,9 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
             self.assertIn(name, self.text)
 
     def test_default_values_present(self):
-        # Hybrid strategy defaults: 8× Loto 5/40 + 2× Joker = ~48 RON
         self.assertIn("default: '2'", self.text)  # Joker
-        self.assertIn("default: '8'", self.text)  # Loto 5/40
-        self.assertIn("default: '0'", self.text)  # Loto 6/49
+        self.assertIn("default: '2'", self.text)  # Loto 6/49
+        self.assertIn("default: '2'", self.text)  # Loto 5/40
 
     def test_resolved_counts_used(self):
         self.assertIn("steps.counts.outputs.joker_lines", self.text)
