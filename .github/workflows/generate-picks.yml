@@ -40,7 +40,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install ML dependencies
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu scikit-learn
+        run: pip install torch --extra-index-url https://download.pytorch.org/whl/cpu scikit-learn
 
       - name: Backfill latest historical draws
         run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
