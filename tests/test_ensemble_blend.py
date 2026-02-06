@@ -97,5 +97,21 @@ class TestGenerateBlendedPicks(unittest.TestCase):
         self.assertEqual(lines1, lines2)
 
 
+class TestBlendedPicksWithNewStrategies(unittest.TestCase):
+    def _make_draws(self, config, count=50):
+        rng = random.Random(0)
+        pool = list(config.pool_range)
+        return [sorted(rng.sample(pool, config.numbers_drawn)) for _ in range(count)]
+
+    def test_blend_includes_genetic_and_gradient_boost(self):
+        draws = self._make_draws(JOKER_CONFIG)
+        rng = random.Random(42)
+        lines = generate_blended_picks(JOKER_CONFIG, draws, 10, rng)
+        self.assertEqual(len(lines), 10)
+        for line in lines:
+            self.assertEqual(len(line), JOKER_CONFIG.numbers_to_pick)
+            self.assertTrue(all(n in JOKER_CONFIG.pool_range for n in line))
+
+
 if __name__ == "__main__":
     unittest.main()
