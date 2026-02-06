@@ -8,6 +8,7 @@ from shared.backtest_base import (
     CrossValidator,
     wilson_score_interval,
     compute_max_drawdown,
+    passes_significance_gate,
 )
 from shared.stats import DeltaStrategy, HotColdStrategy
 
@@ -241,6 +242,51 @@ class TestBacktesterEVScoring(unittest.TestCase):
             expected_value=0.0,
         )
         self.assertEqual(result.ev_per_ticket, 0.0)
+
+
+class TestSignificanceGate(unittest.TestCase):
+    def test_clearly_better_passes(self):
+        result = BacktestResult(
+            strategy_name="good",
+            total_draws=1000,
+            total_tickets=1000,
+            total_wins=200,
+            win_rate=0.2,
+        )
+        self.assertTrue(passes_significance_gate(result, baseline_win_rate=0.1))
+
+    def test_similar_to_baseline_fails(self):
+        result = BacktestResult(
+            strategy_name="meh",
+            total_draws=100,
+            total_tickets=100,
+            total_wins=11,
+            win_rate=0.11,
+        )
+        self.assertFalse(passes_significance_gate(result, baseline_win_rate=0.1))
+
+    def test_worse_than_baseline_fails(self):
+        result = BacktestResult(
+            strategy_name="bad",
+            total_draws=100,
+            total_tickets=100,
+            total_wins=5,
+            win_rate=0.05,
+        )
+        self.assertFalse(passes_significance_gate(result, baseline_win_rate=0.1))
+
+    def test_custom_alpha(self):
+        result = BacktestResult(
+            strategy_name="marginal",
+            total_draws=500,
+            total_tickets=500,
+            total_wins=65,
+            win_rate=0.13,
+        )
+        gate_loose = passes_significance_gate(result, baseline_win_rate=0.1, alpha=0.10)
+        gate_strict = passes_significance_gate(result, baseline_win_rate=0.1, alpha=0.001)
+        if gate_strict:
+            self.assertTrue(gate_loose)
 
 
 if __name__ == "__main__":

@@ -400,6 +400,35 @@ def strategy_significance_test(
     }
 
 
+def passes_significance_gate(
+    result: BacktestResult,
+    baseline_win_rate: float,
+    alpha: float = 0.05,
+) -> bool:
+    """Check if a strategy significantly outperforms the baseline.
+
+    A strategy passes the gate only if:
+    1. Its win rate exceeds the baseline
+    2. The difference is statistically significant at the given alpha level
+
+    Args:
+        result: Backtest result to evaluate.
+        baseline_win_rate: Expected win rate under random selection.
+        alpha: Significance level (default 0.05).
+
+    Returns:
+        True if the strategy significantly outperforms baseline.
+    """
+    if result.total_tickets == 0:
+        return False
+
+    if result.win_rate <= baseline_win_rate:
+        return False
+
+    test = strategy_significance_test(result, baseline_win_rate)
+    return test.get("p_value", 1.0) < alpha and result.win_rate > baseline_win_rate
+
+
 def _normal_cdf(z: float) -> float:
     """Approximate standard normal CDF."""
     return 0.5 * (1 + _erf(z / math.sqrt(2)))
