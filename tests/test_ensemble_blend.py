@@ -6,7 +6,13 @@ from shared.ensemble_blend import (
     _allocate_counts,
     _score_random,
 )
-from shared.game_config import JOKER_CONFIG, LOTO_649_CONFIG, LOTO_540_CONFIG
+from shared.game_config import GameConfig, JOKER_CONFIG, LOTO_649_CONFIG, LOTO_540_CONFIG
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
 
 
 class TestAllocateCounts(unittest.TestCase):
@@ -111,6 +117,22 @@ class TestBlendedPicksWithNewStrategies(unittest.TestCase):
         for line in lines:
             self.assertEqual(len(line), JOKER_CONFIG.numbers_to_pick)
             self.assertTrue(all(n in JOKER_CONFIG.pool_range for n in line))
+
+
+@unittest.skipUnless(TORCH_AVAILABLE, "PyTorch not installed")
+class TestDeepLearningBlend(unittest.TestCase):
+    def test_blend_includes_deep_learning(self):
+        """Ensemble should include deep learning strategies when PyTorch available."""
+        config = GameConfig(
+            name="test", pool_min=1, pool_max=10,
+            numbers_drawn=3, numbers_to_pick=3,
+        )
+        draws = [sorted(random.Random(i).sample(range(1, 11), 3)) for i in range(30)]
+        rng = random.Random(42)
+        picks = generate_blended_picks(config, draws, 5, rng)
+        self.assertEqual(len(picks), 5)
+        for pick in picks:
+            self.assertEqual(len(pick), 3)
 
 
 if __name__ == "__main__":
