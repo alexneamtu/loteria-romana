@@ -37,6 +37,7 @@ try:
     from .tcn_strategy import TCNStrategy
     from .transformer_strategy import TransformerStrategy
     from .normalizing_flows import NormalizingFlowStrategy
+    from .rl_agent import RLAgent
     import torch
     _TORCH_AVAILABLE = True
 except ImportError:
@@ -300,12 +301,16 @@ def generate_blended_picks(
         nf_scoring = NormalizingFlowStrategy(
             config.pool_size, config.numbers_to_pick, epochs=10,
         )
+        rl_scoring = RLAgent(
+            config.pool_size, config.numbers_to_pick, episodes=5, window=10,
+        )
 
         for strat_name, strat in [
             ("lstm", lstm_scoring),
             ("tcn", tcn_scoring),
             ("transformer", xfmr_scoring),
             ("normalizing_flow", nf_scoring),
+            ("rl", rl_scoring),
         ]:
             scores[strat_name] = max(
                 _score_strategy_object(
@@ -430,12 +435,14 @@ def generate_blended_picks(
         tcn_gen = TCNStrategy(config.pool_size, config.numbers_to_pick)
         xfmr_gen = TransformerStrategy(config.pool_size, config.numbers_to_pick)
         nf_gen = NormalizingFlowStrategy(config.pool_size, config.numbers_to_pick)
+        rl_gen = RLAgent(config.pool_size, config.numbers_to_pick)
 
         for strat_name, strat in [
             ("lstm", lstm_gen),
             ("tcn", tcn_gen),
             ("transformer", xfmr_gen),
             ("normalizing_flow", nf_gen),
+            ("rl", rl_gen),
         ]:
             if strat_name in allocation:
                 strat_lines = strat.generate(
