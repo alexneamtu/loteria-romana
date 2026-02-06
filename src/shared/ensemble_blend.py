@@ -37,6 +37,7 @@ try:
     from .tcn_strategy import TCNStrategy
     from .transformer_strategy import TransformerStrategy
     from .normalizing_flows import NormalizingFlowStrategy
+    from .rl_agent import RLAgent
     import torch
     _TORCH_AVAILABLE = True
 except ImportError:
@@ -174,6 +175,62 @@ def _compute_enhanced_bias(
     return result
 
 
+def _apply_significance_gate(
+    scores: dict[str, int],
+    baseline_score: int,
+    total_draws: int,
+    min_draws: int = 30,
+) -> dict[str, int]:
+    """Remove strategies that don't significantly outperform random.
+
+    Uses a simple binomial proportion test. Strategies must have a win
+    rate significantly above baseline to be included.
+
+    Always keeps "random" as the baseline strategy.
+
+    Args:
+        scores: Strategy name -> win count from backtesting.
+        baseline_score: Win count of the random strategy.
+        total_draws: Number of draws in the scoring window.
+        min_draws: Minimum draws needed for gating (skip if fewer).
+
+    Returns:
+        Filtered scores dict with only significant strategies and random.
+    """
+    if total_draws < min_draws:
+        return dict(scores)
+
+    baseline_rate = baseline_score / total_draws if total_draws > 0 else 0.0
+
+    gated: dict[str, int] = {}
+    for name, score in scores.items():
+        if name == "random":
+            gated[name] = score
+            continue
+
+        strategy_rate = score / total_draws if total_draws > 0 else 0.0
+        if strategy_rate < baseline_rate:
+            continue
+
+        if strategy_rate == baseline_rate:
+            gated[name] = score
+            continue
+
+        # Simple z-test for proportion difference
+        se = math.sqrt(baseline_rate * (1 - baseline_rate) / total_draws) if baseline_rate > 0 and baseline_rate < 1 else 0.0
+        if se > 0:
+            z = (strategy_rate - baseline_rate) / se
+            if z > 1.645:  # One-tailed p < 0.05
+                gated[name] = score
+        else:
+            gated[name] = score
+
+    if len(gated) < 2:
+        return dict(scores)
+
+    return gated
+
+
 def generate_blended_picks(
     config: GameConfig,
     draws: list[list[int]],
@@ -300,12 +357,16 @@ def generate_blended_picks(
         nf_scoring = NormalizingFlowStrategy(
             config.pool_size, config.numbers_to_pick, epochs=10,
         )
+        rl_scoring = RLAgent(
+            config.pool_size, config.numbers_to_pick, episodes=5, window=10,
+        )
 
         for strat_name, strat in [
             ("lstm", lstm_scoring),
             ("tcn", tcn_scoring),
             ("transformer", xfmr_scoring),
             ("normalizing_flow", nf_scoring),
+            ("rl", rl_scoring),
         ]:
             scores[strat_name] = max(
                 _score_strategy_object(
@@ -313,6 +374,10 @@ def generate_blended_picks(
                 ),
                 1,
             )
+
+    # Apply significance gate
+    baseline_score = scores.get("random", 1)
+    scores = _apply_significance_gate(scores, baseline_score, len(scoring_draws))
 
     raw_weights = softmax([float(s) for s in scores.values()])
     weights = dict(zip(scores.keys(), raw_weights))
@@ -430,12 +495,14 @@ def generate_blended_picks(
         tcn_gen = TCNStrategy(config.pool_size, config.numbers_to_pick)
         xfmr_gen = TransformerStrategy(config.pool_size, config.numbers_to_pick)
         nf_gen = NormalizingFlowStrategy(config.pool_size, config.numbers_to_pick)
+        rl_gen = RLAgent(config.pool_size, config.numbers_to_pick)
 
         for strat_name, strat in [
             ("lstm", lstm_gen),
             ("tcn", tcn_gen),
             ("transformer", xfmr_gen),
             ("normalizing_flow", nf_gen),
+            ("rl", rl_gen),
         ]:
             if strat_name in allocation:
                 strat_lines = strat.generate(

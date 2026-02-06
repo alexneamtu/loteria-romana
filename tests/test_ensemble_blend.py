@@ -188,5 +188,22 @@ class TestPortfolioOptimizedPicks(unittest.TestCase):
                 self.assertEqual(len(line), config.numbers_to_pick)
 
 
+@unittest.skipUnless(TORCH_AVAILABLE, "PyTorch not installed")
+class TestRLBlendIntegration(unittest.TestCase):
+    def _make_draws(self, config, count=50):
+        rng = random.Random(0)
+        pool = list(config.pool_range)
+        return [sorted(rng.sample(pool, config.numbers_drawn)) for _ in range(count)]
+
+    def test_blend_includes_rl_strategy(self):
+        draws = self._make_draws(JOKER_CONFIG)
+        rng = random.Random(42)
+        lines = generate_blended_picks(JOKER_CONFIG, draws, 5, rng)
+        self.assertEqual(len(lines), 5)
+        for line in lines:
+            self.assertEqual(len(line), JOKER_CONFIG.numbers_to_pick)
+            self.assertTrue(all(n in JOKER_CONFIG.pool_range for n in line))
+
+
 if __name__ == "__main__":
     unittest.main()
