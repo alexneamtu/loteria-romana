@@ -204,5 +204,44 @@ class TestCrossValidator(unittest.TestCase):
         self.assertIn("total_tickets", results)
 
 
+class TestBacktesterEVScoring(unittest.TestCase):
+    def setUp(self):
+        self.tiers = [
+            PrizeTier(name="3_match", matches_required=3, payout=10.0),
+            PrizeTier(name="4_match", matches_required=4, payout=100.0),
+            PrizeTier(name="5_match", matches_required=5, payout=10000.0),
+        ]
+        self.backtester = Backtester(
+            number_pool=45,
+            numbers_to_pick=5,
+            prize_tiers=self.tiers,
+        )
+
+    def test_ev_per_ticket_computed(self):
+        rng_setup = random.Random(42)
+        draws = [
+            (sorted(rng_setup.sample(range(1, 46), 5)), rng_setup.randint(1, 20))
+            for _ in range(100)
+        ]
+        strategy = DeltaStrategy(45, 5)
+        result = self.backtester.backtest(
+            strategy=strategy,
+            draws=draws,
+            train_window=50,
+            rng=random.Random(42),
+        )
+        self.assertIsInstance(result.ev_per_ticket, float)
+        self.assertGreaterEqual(result.ev_per_ticket, 0.0)
+
+    def test_ev_per_ticket_zero_when_no_wins(self):
+        result = BacktestResult(
+            strategy_name="test",
+            total_draws=100,
+            total_tickets=100,
+            expected_value=0.0,
+        )
+        self.assertEqual(result.ev_per_ticket, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

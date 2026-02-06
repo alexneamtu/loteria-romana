@@ -39,6 +39,13 @@ class BacktestResult:
             return 0.0
         return (self.expected_value - self.total_tickets) / self.total_tickets * 100
 
+    @property
+    def ev_per_ticket(self) -> float:
+        """Expected value per ticket (total payout / total tickets)."""
+        if self.total_tickets == 0:
+            return 0.0
+        return self.expected_value / self.total_tickets
+
 
 def wilson_score_interval(
     successes: int, trials: int, confidence: float = 0.95
