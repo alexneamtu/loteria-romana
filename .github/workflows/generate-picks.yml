@@ -37,7 +37,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+
+      - name: Install ML dependencies
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu scikit-learn
 
       - name: Backfill latest historical draws
         run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
@@ -72,7 +75,7 @@ jobs:
 
       - name: Generate picks for all strategies
         run: |
-          STRATEGIES="blend smart optimal coverage pattern ensemble"
+          STRATEGIES="blend bayesian cooccurrence genetic gradient_boost lstm tcn transformer normalizing_flow rl smart optimal coverage pattern ensemble"
 
           for strategy in $STRATEGIES; do
             echo "=== Generating picks with strategy: $strategy ==="
@@ -117,7 +120,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           DATE=$(date +"%Y-%m-%d")
-          STRATEGIES="blend smart optimal coverage pattern ensemble"
+          STRATEGIES="blend bayesian cooccurrence genetic gradient_boost lstm tcn transformer normalizing_flow rl smart optimal coverage pattern ensemble"
 
           send_message() {
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \

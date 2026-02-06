@@ -27,6 +27,24 @@ from shared.advanced_strategies import (
 )
 from shared.ensemble_blend import generate_blended_picks
 from shared.recency import resolve_recency_settings
+from shared.bayesian import BayesianScorer
+from shared.cooccurrence import CooccurrenceStrategy
+from shared.genetic import GeneticStrategy
+
+try:
+    from shared.gradient_boost import GradientBoostStrategy
+except ImportError:
+    GradientBoostStrategy = None
+
+try:
+    from shared.lstm_strategy import LSTMStrategy
+    from shared.tcn_strategy import TCNStrategy
+    from shared.transformer_strategy import TransformerStrategy
+    from shared.normalizing_flows import NormalizingFlowStrategy
+    from shared.rl_agent import RLAgent
+except ImportError:
+    LSTMStrategy = TCNStrategy = TransformerStrategy = None
+    NormalizingFlowStrategy = RLAgent = None
 
 # Loto 6/49 game parameters
 NUMBER_POOL = 49
@@ -128,7 +146,10 @@ def build_parser():
     )
     parser.add_argument(
         "-s", "--strategy",
-        choices=["auto", "blend", "smart", "optimal", "coverage", "pattern", "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
+        choices=["auto", "blend", "bayesian", "cooccurrence", "genetic", "gradient_boost",
+                 "lstm", "tcn", "transformer", "normalizing_flow", "rl",
+                 "smart", "optimal", "coverage", "pattern",
+                 "delta", "hotcold", "pairs", "skip", "sum", "balance", "ensemble"],
         default="blend",
         help="Strategy to use for number selection (blend is recommended)",
     )
@@ -283,6 +304,38 @@ def main():
             draw_dates=draw_dates,
             half_life_mode=half_life_mode,
         )
+    elif args.strategy == "bayesian":
+        strat = BayesianScorer(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick,
+                               half_life=half_life, half_life_mode=half_life_mode)
+        lines = strat.generate(draw_tuples, args.count, rng,
+                               draw_dates=draw_dates, half_life_mode=half_life_mode)
+    elif args.strategy == "cooccurrence":
+        strat = CooccurrenceStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick,
+                                     half_life=half_life, half_life_mode=half_life_mode)
+        lines = strat.generate(draw_tuples, args.count, rng,
+                               draw_dates=draw_dates, half_life_mode=half_life_mode)
+    elif args.strategy == "genetic":
+        strat = GeneticStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick)
+        lines = strat.generate(draw_tuples, args.count, rng)
+    elif args.strategy == "gradient_boost" and GradientBoostStrategy:
+        strat = GradientBoostStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick,
+                                      LOTO_649_CONFIG.numbers_drawn)
+        lines = strat.generate(draw_tuples, args.count, rng)
+    elif args.strategy == "lstm" and LSTMStrategy:
+        strat = LSTMStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick)
+        lines = strat.generate(draw_tuples, args.count, rng)
+    elif args.strategy == "tcn" and TCNStrategy:
+        strat = TCNStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick)
+        lines = strat.generate(draw_tuples, args.count, rng)
+    elif args.strategy == "transformer" and TransformerStrategy:
+        strat = TransformerStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick)
+        lines = strat.generate(draw_tuples, args.count, rng)
+    elif args.strategy == "normalizing_flow" and NormalizingFlowStrategy:
+        strat = NormalizingFlowStrategy(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick)
+        lines = strat.generate(draw_tuples, args.count, rng)
+    elif args.strategy == "rl" and RLAgent:
+        strat = RLAgent(LOTO_649_CONFIG.pool_size, LOTO_649_CONFIG.numbers_to_pick)
+        lines = strat.generate(draw_tuples, args.count, rng)
     elif args.strategy == "auto":
         lines = generate_picks(
             draw_tuples,
