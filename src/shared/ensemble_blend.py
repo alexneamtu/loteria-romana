@@ -19,8 +19,14 @@ from .game_strategies import (
     is_prize_winner,
     _sample_weighted,
 )
+from .genetic import GeneticStrategy
 from .math_utils import softmax
 from .recency import DEFAULT_HALF_LIFE, DEFAULT_HALF_LIFE_MODE
+
+try:
+    from .gradient_boost import GradientBoostStrategy, SKLEARN_AVAILABLE as _GB_AVAILABLE
+except ImportError:
+    _GB_AVAILABLE = False
 
 
 def _score_random(
@@ -167,6 +173,12 @@ def generate_blended_picks(
         half_life=half_life,
         half_life_mode=half_life_mode,
     )
+    genetic = GeneticStrategy(
+        config.pool_size,
+        config.numbers_to_pick,
+        population_size=50,
+        generations=20,
+    )
 
     scores = {
         "random": max(_score_random(config, draws, rng), 1),
@@ -188,7 +200,26 @@ def generate_blended_picks(
             ),
             1,
         ),
+        "genetic": max(
+            _score_strategy_object(
+                config, draws, genetic, rng, draw_dates, half_life_mode,
+            ),
+            1,
+        ),
     }
+
+    if _GB_AVAILABLE:
+        gb = GradientBoostStrategy(
+            config.pool_size,
+            config.numbers_to_pick,
+            config.numbers_drawn,
+        )
+        scores["gradient_boost"] = max(
+            _score_strategy_object(
+                config, draws, gb, rng, draw_dates, half_life_mode,
+            ),
+            1,
+        )
 
     raw_weights = softmax([float(s) for s in scores.values()])
     weights = dict(zip(scores.keys(), raw_weights))
@@ -257,6 +288,38 @@ def generate_blended_picks(
             seen.add(key)
             lines.append(pick)
             added_cooc += 1
+
+    genetic_lines = genetic.generate(
+        draws, allocation.get("genetic", 0) + count, rng,
+    )
+    added_genetic = 0
+    for pick in genetic_lines:
+        if added_genetic >= allocation.get("genetic", 0):
+            break
+        key = tuple(pick)
+        if key not in seen:
+            seen.add(key)
+            lines.append(pick)
+            added_genetic += 1
+
+    if _GB_AVAILABLE and "gradient_boost" in allocation:
+        gb_gen = GradientBoostStrategy(
+            config.pool_size,
+            config.numbers_to_pick,
+            config.numbers_drawn,
+        )
+        gb_lines = gb_gen.generate(
+            draws, allocation.get("gradient_boost", 0) + count, rng,
+        )
+        added_gb = 0
+        for pick in gb_lines:
+            if added_gb >= allocation.get("gradient_boost", 0):
+                break
+            key = tuple(pick)
+            if key not in seen:
+                seen.add(key)
+                lines.append(pick)
+                added_gb += 1
 
     while len(lines) < count:
         extra = generate_random_picks(config, 1, rng)
