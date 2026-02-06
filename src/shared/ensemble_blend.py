@@ -173,6 +173,12 @@ def generate_blended_picks(
         half_life=half_life,
         half_life_mode=half_life_mode,
     )
+    genetic_scoring = GeneticStrategy(
+        config.pool_size,
+        config.numbers_to_pick,
+        population_size=20,
+        generations=5,
+    )
     genetic = GeneticStrategy(
         config.pool_size,
         config.numbers_to_pick,
@@ -180,29 +186,32 @@ def generate_blended_picks(
         generations=20,
     )
 
+    scoring_draws = draws[-100:] if len(draws) > 100 else draws
+    scoring_dates = draw_dates[-100:] if draw_dates and len(draw_dates) > 100 else draw_dates
+
     scores = {
-        "random": max(_score_random(config, draws, rng), 1),
+        "random": max(_score_random(config, scoring_draws, rng), 1),
         "frequency": max(
             _score_frequency(
-                config, draws, rng, half_life, half_life_mode, draw_dates,
+                config, scoring_draws, rng, half_life, half_life_mode, scoring_dates,
             ),
             1,
         ),
         "bayesian": max(
             _score_strategy_object(
-                config, draws, bayesian, rng, draw_dates, half_life_mode,
+                config, scoring_draws, bayesian, rng, scoring_dates, half_life_mode,
             ),
             1,
         ),
         "cooccurrence": max(
             _score_strategy_object(
-                config, draws, cooccurrence, rng, draw_dates, half_life_mode,
+                config, scoring_draws, cooccurrence, rng, scoring_dates, half_life_mode,
             ),
             1,
         ),
         "genetic": max(
             _score_strategy_object(
-                config, draws, genetic, rng, draw_dates, half_life_mode,
+                config, scoring_draws, genetic_scoring, rng, scoring_dates, half_life_mode,
             ),
             1,
         ),
@@ -216,7 +225,7 @@ def generate_blended_picks(
         )
         scores["gradient_boost"] = max(
             _score_strategy_object(
-                config, draws, gb, rng, draw_dates, half_life_mode,
+                config, scoring_draws, gb, rng, scoring_dates, half_life_mode,
             ),
             1,
         )
