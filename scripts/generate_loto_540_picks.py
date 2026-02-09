@@ -26,6 +26,7 @@ from shared.advanced_strategies import (
     generate_pattern_picks,
 )
 from shared.ensemble_blend import generate_blended_picks
+from shared.portfolio import optimize_ticket_portfolio
 from shared.recency import resolve_recency_settings
 from shared.bayesian import BayesianScorer
 from shared.cooccurrence import CooccurrenceStrategy
@@ -307,35 +308,44 @@ def main():
     elif args.strategy == "bayesian":
         strat = BayesianScorer(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick,
                                half_life=half_life, half_life_mode=half_life_mode)
-        lines = strat.generate(draw_tuples, args.count, rng,
-                               draw_dates=draw_dates, half_life_mode=half_life_mode)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng,
+                                    draw_dates=draw_dates, half_life_mode=half_life_mode)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "cooccurrence":
         strat = CooccurrenceStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick,
                                      half_life=half_life, half_life_mode=half_life_mode)
-        lines = strat.generate(draw_tuples, args.count, rng,
-                               draw_dates=draw_dates, half_life_mode=half_life_mode)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng,
+                                    draw_dates=draw_dates, half_life_mode=half_life_mode)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "genetic":
         strat = GeneticStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "gradient_boost" and GradientBoostStrategy:
         strat = GradientBoostStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick,
                                       LOTO_540_CONFIG.numbers_drawn)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "lstm" and LSTMStrategy:
         strat = LSTMStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "tcn" and TCNStrategy:
         strat = TCNStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "transformer" and TransformerStrategy:
         strat = TransformerStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "normalizing_flow" and NormalizingFlowStrategy:
         strat = NormalizingFlowStrategy(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "rl" and RLAgent:
         strat = RLAgent(LOTO_540_CONFIG.pool_size, LOTO_540_CONFIG.numbers_to_pick)
-        lines = strat.generate(draw_tuples, args.count, rng)
+        candidates = strat.generate(draw_tuples, args.count * 3, rng)
+        lines = optimize_ticket_portfolio(candidates, args.count, LOTO_540_CONFIG.pool_size)
     elif args.strategy == "auto":
         lines = generate_picks(
             draw_tuples,
