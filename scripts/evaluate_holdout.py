@@ -70,9 +70,10 @@ def _load_main_numbers(csv_path: Path, config) -> list[list[int]]:
         for row in reader:
             numbers = []
             for i in range(1, config.numbers_drawn + 1):
-                key = f"n{i}"
-                if key in row:
-                    numbers.append(int(row[key]))
+                for prefix in (f"n{i}", f"main_{i}"):
+                    if prefix in row:
+                        numbers.append(int(row[prefix]))
+                        break
             if len(numbers) == config.numbers_drawn:
                 draws.append(sorted(numbers))
     return draws

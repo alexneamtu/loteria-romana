@@ -9,17 +9,17 @@ on:
       joker_lines:
         description: 'Number of Joker lines to generate (8 RON each)'
         required: false
-        default: '2'
+        default: '5'
         type: string
       loto649_lines:
         description: 'Number of Loto 6/49 lines to generate (6 RON each)'
         required: false
-        default: '2'
+        default: '5'
         type: string
       loto540_lines:
         description: 'Number of Loto 5/40 lines to generate (4 RON each)'
         required: false
-        default: '2'
+        default: '5'
         type: string
 
 permissions:
@@ -65,9 +65,9 @@ jobs:
             echo "$input"
           }
 
-          joker=$(normalize "${{ github.event.inputs.joker_lines }}" "2")
-          loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "2")
-          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "2")
+          joker=$(normalize "${{ github.event.inputs.joker_lines }}" "5")
+          loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "5")
+          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "5")
 
           echo "joker_lines=$joker" >> "$GITHUB_OUTPUT"
           echo "loto649_lines=$loto649" >> "$GITHUB_OUTPUT"
@@ -75,7 +75,7 @@ jobs:
 
       - name: Generate picks for all strategies
         run: |
-          STRATEGIES="blend bayesian cooccurrence genetic gradient_boost lstm tcn transformer normalizing_flow rl smart optimal coverage pattern ensemble"
+          STRATEGIES="blend bayesian transformer lstm tcn normalizing_flow cooccurrence rl"
 
           for strategy in $STRATEGIES; do
             echo "=== Generating picks with strategy: $strategy ==="
@@ -96,10 +96,10 @@ jobs:
             fi
           done
 
-          # Copy blend picks as the "played" picks for backward compatibility
-          cp picks/joker_blend.txt picks/joker.txt 2>/dev/null || true
-          cp picks/loto649_blend.txt picks/loto649.txt 2>/dev/null || true
-          cp picks/loto540_blend.txt picks/loto540.txt 2>/dev/null || true
+          # Copy best-performing strategy picks as the "played" picks
+          cp picks/joker_bayesian.txt picks/joker.txt 2>/dev/null || true
+          cp picks/loto649_transformer.txt picks/loto649.txt 2>/dev/null || true
+          cp picks/loto540_transformer.txt picks/loto540.txt 2>/dev/null || true
 
           echo "=== Generated picks summary ==="
           ls -la picks/
@@ -120,7 +120,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           DATE=$(date +"%Y-%m-%d")
-          STRATEGIES="blend bayesian cooccurrence genetic gradient_boost lstm tcn transformer normalizing_flow rl smart optimal coverage pattern ensemble"
+          STRATEGIES="blend bayesian transformer lstm tcn normalizing_flow cooccurrence rl"
 
           send_message() {
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
