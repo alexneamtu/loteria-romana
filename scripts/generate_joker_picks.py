@@ -26,6 +26,7 @@ from shared.advanced_strategies import (
     generate_pattern_picks,
 )
 from shared.ensemble_blend import generate_blended_picks
+from shared.portfolio import optimize_ticket_portfolio
 from shared.recency import resolve_recency_settings
 from shared.bayesian import BayesianScorer
 from shared.cooccurrence import CooccurrenceStrategy
@@ -328,43 +329,52 @@ def main():
     elif args.strategy == "bayesian":
         strat = BayesianScorer(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick,
                                half_life=half_life, half_life_mode=half_life_mode)
-        main_picks = strat.generate(draw_main_only, args.count, rng,
+        candidates = strat.generate(draw_main_only, args.count * 3, rng,
                                     draw_dates=draw_dates, half_life_mode=half_life_mode)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "cooccurrence":
         strat = CooccurrenceStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick,
                                      half_life=half_life, half_life_mode=half_life_mode)
-        main_picks = strat.generate(draw_main_only, args.count, rng,
+        candidates = strat.generate(draw_main_only, args.count * 3, rng,
                                     draw_dates=draw_dates, half_life_mode=half_life_mode)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "genetic":
         strat = GeneticStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "gradient_boost" and GradientBoostStrategy:
         strat = GradientBoostStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick,
                                       JOKER_CONFIG.numbers_drawn)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "lstm" and LSTMStrategy:
         strat = LSTMStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "tcn" and TCNStrategy:
         strat = TCNStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "transformer" and TransformerStrategy:
         strat = TransformerStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "normalizing_flow" and NormalizingFlowStrategy:
         strat = NormalizingFlowStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "rl" and RLAgent:
         strat = RLAgent(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
-        main_picks = strat.generate(draw_main_only, args.count, rng)
+        candidates = strat.generate(draw_main_only, args.count * 3, rng)
+        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
         lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
     elif args.strategy == "auto":
         lines = generate_picks(
