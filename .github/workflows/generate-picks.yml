@@ -6,20 +6,10 @@ on:
     - cron: '0 10 * * 0,4'
   workflow_dispatch:
     inputs:
-      joker_lines:
-        description: 'Number of Joker lines to generate (8 RON each)'
+      budget:
+        description: 'Budget in RON (optimally allocated across games)'
         required: false
-        default: '5'
-        type: string
-      loto649_lines:
-        description: 'Number of Loto 6/49 lines to generate (6 RON each)'
-        required: false
-        default: '5'
-        type: string
-      loto540_lines:
-        description: 'Number of Loto 5/40 lines to generate (4 RON each)'
-        required: false
-        default: '5'
+        default: '40'
         type: string
 
 permissions:
@@ -45,64 +35,22 @@ jobs:
       - name: Backfill latest historical draws
         run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
 
-      - name: Prepare picks directory
-        run: mkdir -p picks
-
-      - name: Resolve line counts
-        id: counts
+      - name: Resolve budget
+        id: config
         run: |
-          normalize() {
-            local input="$1"
-            local fallback="$2"
-            if [ -z "$input" ]; then
-              echo "$fallback"
-              return
-            fi
-            if ! [[ "$input" =~ ^[0-9]+$ ]]; then
-              echo "$fallback"
-              return
-            fi
-            echo "$input"
-          }
+          budget="${{ github.event.inputs.budget }}"
+          if [ -z "$budget" ] || ! [[ "$budget" =~ ^[0-9]+$ ]]; then
+            budget="40"
+          fi
+          echo "budget=$budget" >> "$GITHUB_OUTPUT"
 
-          joker=$(normalize "${{ github.event.inputs.joker_lines }}" "5")
-          loto649=$(normalize "${{ github.event.inputs.loto649_lines }}" "5")
-          loto540=$(normalize "${{ github.event.inputs.loto540_lines }}" "5")
-
-          echo "joker_lines=$joker" >> "$GITHUB_OUTPUT"
-          echo "loto649_lines=$loto649" >> "$GITHUB_OUTPUT"
-          echo "loto540_lines=$loto540" >> "$GITHUB_OUTPUT"
-
-      - name: Generate picks for all strategies
+      - name: Generate recommended picks
         run: |
-          STRATEGIES="blend bayesian transformer lstm tcn normalizing_flow cooccurrence rl"
-
-          for strategy in $STRATEGIES; do
-            echo "=== Generating picks with strategy: $strategy ==="
-
-            if [ "${{ steps.counts.outputs.joker_lines }}" != "0" ]; then
-              picks=$(PYTHONPATH=src python scripts/generate_joker_picks.py -s "$strategy" -n ${{ steps.counts.outputs.joker_lines }} --seed ${{ github.run_id }})
-              printf '%s\n' "$picks" > "picks/joker_${strategy}.txt"
-            fi
-
-            if [ "${{ steps.counts.outputs.loto649_lines }}" != "0" ]; then
-              picks=$(PYTHONPATH=src python scripts/generate_loto_649_picks.py -s "$strategy" -n ${{ steps.counts.outputs.loto649_lines }} --seed ${{ github.run_id }})
-              printf '%s\n' "$picks" > "picks/loto649_${strategy}.txt"
-            fi
-
-            if [ "${{ steps.counts.outputs.loto540_lines }}" != "0" ]; then
-              picks=$(PYTHONPATH=src python scripts/generate_loto_540_picks.py -s "$strategy" -n ${{ steps.counts.outputs.loto540_lines }} --seed ${{ github.run_id }})
-              printf '%s\n' "$picks" > "picks/loto540_${strategy}.txt"
-            fi
-          done
-
-          # Copy best-performing strategy picks as the "played" picks
-          cp picks/joker_bayesian.txt picks/joker.txt 2>/dev/null || true
-          cp picks/loto649_transformer.txt picks/loto649.txt 2>/dev/null || true
-          cp picks/loto540_transformer.txt picks/loto540.txt 2>/dev/null || true
-
-          echo "=== Generated picks summary ==="
-          ls -la picks/
+          PYTHONPATH=src python scripts/generate_recommended_picks.py \
+            --budget ${{ steps.config.outputs.budget }} \
+            --seed ${{ github.run_id }} \
+            --output-dir picks \
+            --verbose
 
       - name: Record picks date
         run: date +"%Y-%m-%d" > picks/date.txt
@@ -120,7 +68,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           DATE=$(date +"%Y-%m-%d")
-          STRATEGIES="blend bayesian transformer lstm tcn normalizing_flow cooccurrence rl"
+          BUDGET="${{ steps.config.outputs.budget }}"
 
           send_message() {
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
@@ -129,36 +77,16 @@ jobs:
               -d parse_mode="Markdown" > /dev/null
           }
 
-          build_game_message() {
-            local emoji="$1"
-            local game_label="$2"
-            local game_prefix="$3"
-            local msg="${emoji} *${game_label} Picks - ${DATE}*"
-
-            for strategy in $STRATEGIES; do
-              local file="picks/${game_prefix}_${strategy}.txt"
-              local content
-              content=$(cat "$file" 2>/dev/null || true)
-              if [ -n "$content" ]; then
-                msg=$(printf '%s\n\n*%s*\n```\n%s\n```' "$msg" "$strategy" "$content")
-              fi
-            done
-
-            echo "$msg"
-          }
-
-          # Send one message per game with all strategies labeled
-          if [ "${{ steps.counts.outputs.loto540_lines }}" != "0" ]; then
-            MSG=$(build_game_message "🎯" "LOTO 5/40" "loto540")
+          # Send Joker picks
+          if [ -f "picks/joker.txt" ]; then
+            JOKER_CONTENT=$(cat picks/joker.txt)
+            MSG=$(printf '🃏 *JOKER Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$JOKER_CONTENT")
             send_message "$MSG"
           fi
 
-          if [ "${{ steps.counts.outputs.loto649_lines }}" != "0" ]; then
-            MSG=$(build_game_message "🎱" "LOTO 6/49" "loto649")
-            send_message "$MSG"
-          fi
-
-          if [ "${{ steps.counts.outputs.joker_lines }}" != "0" ]; then
-            MSG=$(build_game_message "🃏" "JOKER" "joker")
+          # Send Loto 6/49 picks
+          if [ -f "picks/loto649.txt" ]; then
+            LOTO_CONTENT=$(cat picks/loto649.txt)
+            MSG=$(printf '🎱 *LOTO 6/49 Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$LOTO_CONTENT")
             send_message "$MSG"
           fi
