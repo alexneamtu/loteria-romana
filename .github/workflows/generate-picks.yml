@@ -90,3 +90,10 @@ jobs:
             MSG=$(printf '🎱 *LOTO 6/49 Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$LOTO_CONTENT")
             send_message "$MSG"
           fi
+
+          # Send Loto 5/40 picks
+          if [ -f "picks/loto540.txt" ]; then
+            LOTO540_CONTENT=$(cat picks/loto540.txt)
+            MSG=$(printf '🎯 *LOTO 5/40 Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$LOTO540_CONTENT")
+            send_message "$MSG"
+          fi

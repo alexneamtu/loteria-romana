@@ -2,8 +2,8 @@ name: Check Lottery Results
 
 on:
   schedule:
-    # Check results: Monday and Friday at 6 AM UTC (8 AM EET) - morning after draws
-    - cron: '0 6 * * 1,5'
+    # Check results: Monday and Friday at 9 AM UTC (11 AM EET) - morning after draws
+    - cron: '0 9 * * 1,5'
   workflow_dispatch:
     inputs:
       max_retries:
@@ -19,7 +19,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 jobs:
   check-results:
@@ -82,3 +82,11 @@ jobs:
           if [ -f "results/comparison.txt" ]; then
             send_message "$(cat results/comparison.txt)"
           fi
+
+      - name: Commit results history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/results/history.csv
+          git diff --staged --quiet || git commit -m "chore: update results history"
+          git push

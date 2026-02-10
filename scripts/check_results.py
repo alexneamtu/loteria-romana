@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check lottery results and compare against saved picks from multiple strategies."""
 
+import csv
 import os
 import re
 import sys
@@ -163,6 +164,43 @@ def build_comparison_message(
     return "\n".join(lines)
 
 
+HISTORY_COLUMNS = [
+    "date", "game", "strategy", "picks_count",
+    "total_matches", "best_match", "match_total", "winning_numbers",
+]
+
+
+def append_history(
+    history_path: Path,
+    game_results: list[tuple[str, str, str, dict[str, dict], int]],
+) -> None:
+    """Append results to CSV history file."""
+    file_exists = history_path.exists() and history_path.stat().st_size > 0
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(history_path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=HISTORY_COLUMNS)
+        if not file_exists:
+            writer.writeheader()
+
+        for draw_date, game_key, winning_str, strategy_results, match_total in game_results:
+            if not strategy_results:
+                continue
+            for strategy, data in strategy_results.items():
+                writer.writerow({
+                    "date": draw_date,
+                    "game": game_key,
+                    "strategy": strategy,
+                    "picks_count": len(data["results"]),
+                    "total_matches": data["score"],
+                    "best_match": data["best_match"],
+                    "match_total": match_total,
+                    "winning_numbers": winning_str,
+                })
+
+    log(f"Appended results to {history_path}")
+
+
 def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
     """Fetch results with retry logic."""
     joker_cache = Path("data/raw/joker_results.html")
@@ -298,18 +336,24 @@ def main():
         ("loto540", "🎯", "LOTO 5/40", loto540_draws, 5),
     ]
 
+    history_path = Path(os.environ.get("HISTORY_CSV", "data/results/history.csv"))
+
     all_game_results = []
+    history_rows = []
     for game_key, emoji, game_label, draws, match_total in games:
         draw_date, winning_str, msg, strategy_results = process_game(
             game_key, emoji, game_label, draws, picks_dir, match_total,
         )
         (output_dir / f"{game_key}.txt").write_text(msg, encoding="utf-8")
         all_game_results.append((emoji, game_label, strategy_results, match_total))
+        history_rows.append((draw_date, game_key, winning_str, strategy_results, match_total))
         log(f"Wrote {game_key} results message")
 
     comparison = build_comparison_message(all_game_results)
     (output_dir / "comparison.txt").write_text(comparison, encoding="utf-8")
     log("Wrote comparison message")
+
+    append_history(history_path, history_rows)
 
     log("\n=== Results Checker Completed ===")
 

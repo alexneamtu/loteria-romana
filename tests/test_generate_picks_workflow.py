@@ -23,6 +23,7 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
     def test_telegram_step_uses_file_existence_check(self):
         self.assertIn('if [ -f "picks/joker.txt" ]', self.text)
         self.assertIn('if [ -f "picks/loto649.txt" ]', self.text)
+        self.assertIn('if [ -f "picks/loto540.txt" ]', self.text)
 
     def test_telegram_step_sends_messages(self):
         self.assertIn("send_message", self.text)

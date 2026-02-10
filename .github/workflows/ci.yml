@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install torch --extra-index-url https://download.pytorch.org/whl/cpu scikit-learn
+
+      - name: Run tests
+        run: PYTHONPATH=src python -m pytest tests/ -v
