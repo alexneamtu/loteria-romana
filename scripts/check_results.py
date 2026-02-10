@@ -61,9 +61,14 @@ def format_pick_result(pick: list[int], matched: list[int], count: int, total: i
 def find_strategy_files(picks_dir: Path, game_prefix: str) -> dict[str, Path]:
     """Find all strategy files for a game. Returns {strategy_name: file_path}."""
     strategies = {}
+    # Check for strategy-specific files (e.g. joker_blend.txt)
     for path in sorted(picks_dir.glob(f"{game_prefix}_*.txt")):
         strategy = path.stem.replace(f"{game_prefix}_", "")
         strategies[strategy] = path
+    # Check for plain game file (e.g. joker.txt) from budget-optimized picks
+    plain_file = picks_dir / f"{game_prefix}.txt"
+    if plain_file.exists() and "recommended" not in strategies:
+        strategies["recommended"] = plain_file
     return strategies
 
 
