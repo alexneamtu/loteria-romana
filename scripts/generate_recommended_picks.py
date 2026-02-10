@@ -19,7 +19,7 @@ from shared.game_recommender import (
     format_recommendation,
     optimize_budget,
 )
-from shared.game_config import JOKER_CONFIG, LOTO_649_CONFIG
+from shared.game_config import JOKER_CONFIG, LOTO_540_CONFIG, LOTO_649_CONFIG
 from shared.ensemble_blend import generate_blended_picks
 from shared.recency import resolve_recency_settings
 
@@ -51,7 +51,7 @@ def build_parser():
     )
     parser.add_argument(
         "--output-dir", type=str,
-        help="Save picks to files in this directory (joker.txt, loto649.txt)",
+        help="Save picks to files in this directory (joker.txt, loto649.txt, loto540.txt)",
     )
     return parser
 
@@ -92,6 +92,33 @@ def generate_joker_picks(draws, count, rng, half_life, half_life_mode):
         draw_dates=draw_dates,
     )
     return [(main, rng.randint(1, JOKER_SECONDARY_POOL)) for main in main_picks]
+
+
+def load_loto_540_draws():
+    from loto_540_model.fetch import update_dataset
+    from loto_540_model.storage import load_draws
+
+    url = "https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/540_si_super_noroc/rezultate_extrageri.html"
+    cache_path = Path("data/raw/loto_540_results.html")
+    csv_path = Path("data/clean/loto_540_draws.csv")
+    update_dataset(url, cache_path, csv_path)
+    return load_draws(csv_path)
+
+
+def generate_540_picks(draws, count, rng, half_life, half_life_mode):
+    draw_main_only = [d.main_numbers for d in draws]
+    draw_dates = [d.date for d in draws]
+
+    main_picks = generate_blended_picks(
+        LOTO_540_CONFIG,
+        draw_main_only,
+        count,
+        rng,
+        half_life=half_life,
+        half_life_mode=half_life_mode,
+        draw_dates=draw_dates,
+    )
+    return main_picks
 
 
 def generate_649_picks(draws, count, rng, half_life, half_life_mode):
@@ -149,6 +176,7 @@ def main():
 
     n_joker = allocation.tickets.get("joker", 0)
     n_649 = allocation.tickets.get("loto_649", 0)
+    n_540 = allocation.tickets.get("loto_540", 0)
 
     if n_joker > 0:
         print()
@@ -175,6 +203,19 @@ def main():
             loto_lines.append(line)
         if output_dir:
             (output_dir / "loto649.txt").write_text("\n".join(loto_lines) + "\n")
+
+    if n_540 > 0:
+        print()
+        print(f"--- Loto 5/40 ({n_540} tickets) ---")
+        draws = load_loto_540_draws()
+        lines = generate_540_picks(draws, n_540, rng, half_life, half_life_mode)
+        loto540_lines = []
+        for idx, main in enumerate(lines, 1):
+            line = f"{idx}. {', '.join(str(n) for n in main)}"
+            print(line)
+            loto540_lines.append(line)
+        if output_dir:
+            (output_dir / "loto540.txt").write_text("\n".join(loto540_lines) + "\n")
 
 
 if __name__ == "__main__":
