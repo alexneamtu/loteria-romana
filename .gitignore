@@ -1,5 +1,5 @@
 .worktrees/
 __pycache__/
 *.pyc
-analysis_results/
-results/
+/analysis_results/
+/results/
