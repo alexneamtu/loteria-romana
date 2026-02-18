@@ -1,4 +1,5 @@
 import unittest
+import re
 from types import SimpleNamespace
 from unittest import mock
 
@@ -75,3 +76,67 @@ class TestCliDrawDates(unittest.TestCase):
         _, kwargs = smart.call_args
         self.assertEqual(kwargs["draw_dates"], ["2024-01-01", "2024-01-05"])
         self.assertEqual(kwargs["half_life_mode"], "days")
+
+
+class TestJokerCliSetOptimization(unittest.TestCase):
+    @staticmethod
+    def _extract_output_lines(mock_print):
+        rendered = []
+        for call in mock_print.call_args_list:
+            if not call.args:
+                continue
+            line = str(call.args[0])
+            if re.match(r"^\d+\.\s", line):
+                rendered.append(line)
+        return rendered
+
+    @staticmethod
+    def _parse_main_and_joker(line: str):
+        match = re.match(r"^\d+\.\s*([\d,\s]+)\s\+\sJ(\d+)$", line)
+        if not match:
+            return [], -1
+        main = [int(value.strip()) for value in match.group(1).split(",")]
+        joker = int(match.group(2))
+        return main, joker
+
+    def test_assigns_unique_joker_numbers_for_small_count(self):
+        draws = [
+            SimpleNamespace(date="2024-01-01", main_numbers=[1, 2, 3, 4, 5], joker=7),
+            SimpleNamespace(date="2024-01-05", main_numbers=[2, 3, 4, 5, 6], joker=8),
+        ]
+        duplicate_main = [[1, 2, 3, 4, 5]] * 5
+
+        with mock.patch.object(joker_script, "update_dataset"), \
+            mock.patch.object(joker_script, "load_draws", return_value=draws), \
+            mock.patch.object(joker_script, "resolve_seed", return_value=123), \
+            mock.patch.object(joker_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(joker_script, "generate_smart_picks", return_value=duplicate_main), \
+            mock.patch("builtins.print") as mock_print, \
+            mock.patch("sys.argv", ["generate_joker_picks.py", "--strategy", "smart", "-n", "5"]):
+            joker_script.main()
+
+        lines = self._extract_output_lines(mock_print)
+        jokers = [self._parse_main_and_joker(line)[1] for line in lines]
+        self.assertEqual(len(jokers), 5)
+        self.assertEqual(len(set(jokers)), 5)
+
+    def test_deduplicates_duplicate_main_candidates(self):
+        draws = [
+            SimpleNamespace(date="2024-01-01", main_numbers=[1, 2, 3, 4, 5], joker=7),
+            SimpleNamespace(date="2024-01-05", main_numbers=[2, 3, 4, 5, 6], joker=8),
+        ]
+        duplicate_main = [[1, 2, 3, 4, 5]] * 5
+
+        with mock.patch.object(joker_script, "update_dataset"), \
+            mock.patch.object(joker_script, "load_draws", return_value=draws), \
+            mock.patch.object(joker_script, "resolve_seed", return_value=123), \
+            mock.patch.object(joker_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(joker_script, "generate_smart_picks", return_value=duplicate_main), \
+            mock.patch("builtins.print") as mock_print, \
+            mock.patch("sys.argv", ["generate_joker_picks.py", "--strategy", "smart", "-n", "5"]):
+            joker_script.main()
+
+        lines = self._extract_output_lines(mock_print)
+        mains = [tuple(self._parse_main_and_joker(line)[0]) for line in lines]
+        self.assertEqual(len(mains), 5)
+        self.assertEqual(len(set(mains)), 5)
