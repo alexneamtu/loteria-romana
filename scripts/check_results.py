@@ -17,6 +17,7 @@ from loto_649_model.fetch import update_dataset as update_loto649
 from loto_649_model.storage import load_draws as load_loto649
 from loto_540_model.fetch import update_dataset as update_loto540
 from loto_540_model.storage import load_draws as load_loto540
+from shared.results_db import persist_check_results
 
 
 def log(msg: str) -> None:
@@ -354,6 +355,11 @@ def main():
     log("Wrote comparison message")
 
     append_history(history_path, history_rows)
+    persist_check_results(
+        max_retries=max_retries,
+        retry_delay_minutes=delay_minutes,
+        history_rows=history_rows,
+    )
 
     log("\n=== Results Checker Completed ===")
 

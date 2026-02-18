@@ -29,6 +29,7 @@ from shared.joker_set_optimizer import (
     optimize_main_ticket_set,
 )
 from shared.recency import resolve_recency_settings
+from shared.results_db import persist_generation_run
 
 
 JOKER_SECONDARY_POOL = 20
@@ -311,6 +312,13 @@ def main():
     )
     print(format_recommendation(allocation))
 
+    allocation_payload = {
+        "tickets": allocation.tickets,
+        "total_cost": allocation.total_cost,
+        "p_any_win": allocation.p_any_win,
+        "budget": allocation.budget,
+    }
+
     if args.verbose:
         print()
         print("Per-game analysis:")
@@ -334,7 +342,19 @@ def main():
                     f"ratio={info.get('ratio', 0):.3f})"
                 )
 
+    generated_tickets: list[dict[str, object]] = []
+
     if allocation.p_any_win == 0:
+        persist_generation_run(
+            budget=args.budget,
+            seed=args.seed,
+            ev_gate=args.ev_gate,
+            ev_min_ratio=args.ev_min_ratio,
+            jackpots=jackpots,
+            allocation=allocation_payload,
+            gate_details=gate_details,
+            tickets=generated_tickets,
+        )
         return
 
     output_dir = Path(args.output_dir) if args.output_dir else None
@@ -355,6 +375,15 @@ def main():
             line = f"{idx}. {', '.join(str(n) for n in main)} + J{joker}"
             print(line)
             joker_lines.append(line)
+            generated_tickets.append(
+                {
+                    "game": "joker",
+                    "strategy": "recommended",
+                    "line_no": idx,
+                    "main_numbers": main,
+                    "joker_number": joker,
+                }
+            )
         if output_dir:
             (output_dir / "joker.txt").write_text("\n".join(joker_lines) + "\n")
 
@@ -368,6 +397,15 @@ def main():
             line = f"{idx}. {', '.join(str(n) for n in main)}"
             print(line)
             loto_lines.append(line)
+            generated_tickets.append(
+                {
+                    "game": "loto_649",
+                    "strategy": "recommended",
+                    "line_no": idx,
+                    "main_numbers": main,
+                    "joker_number": None,
+                }
+            )
         if output_dir:
             (output_dir / "loto649.txt").write_text("\n".join(loto_lines) + "\n")
 
@@ -381,8 +419,28 @@ def main():
             line = f"{idx}. {', '.join(str(n) for n in main)}"
             print(line)
             loto540_lines.append(line)
+            generated_tickets.append(
+                {
+                    "game": "loto_540",
+                    "strategy": "recommended",
+                    "line_no": idx,
+                    "main_numbers": main,
+                    "joker_number": None,
+                }
+            )
         if output_dir:
             (output_dir / "loto540.txt").write_text("\n".join(loto540_lines) + "\n")
+
+    persist_generation_run(
+        budget=args.budget,
+        seed=args.seed,
+        ev_gate=args.ev_gate,
+        ev_min_ratio=args.ev_min_ratio,
+        jackpots=jackpots,
+        allocation=allocation_payload,
+        gate_details=gate_details,
+        tickets=generated_tickets,
+    )
 
 
 if __name__ == "__main__":

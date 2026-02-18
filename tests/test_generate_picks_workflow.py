@@ -18,6 +18,12 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertIn("default: '40'", self.text)
         self.assertIn("default: 'false'", self.text)
 
+    def test_database_env_and_driver_present(self):
+        self.assertIn("DATABASE_URL", self.text)
+        self.assertIn("secrets.DATABASE_URL", self.text)
+        self.assertIn("Install DB driver", self.text)
+        self.assertIn("psycopg[binary]", self.text)
+
     def test_recommended_picks_script_used(self):
         self.assertIn("generate_recommended_picks.py", self.text)
         self.assertIn("--budget", self.text)

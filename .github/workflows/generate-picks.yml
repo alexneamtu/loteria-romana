@@ -44,6 +44,8 @@ permissions:
 jobs:
   generate-picks:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - name: Checkout repository
@@ -56,6 +58,9 @@ jobs:
 
       - name: Install ML dependencies
         run: pip install torch --extra-index-url https://download.pytorch.org/whl/cpu scikit-learn
+
+      - name: Install DB driver
+        run: pip install psycopg[binary]
 
       - name: Backfill latest historical draws
         run: PYTHONPATH=src python scripts/backfill_noroc_chior.py

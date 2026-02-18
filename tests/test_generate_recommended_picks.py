@@ -79,5 +79,58 @@ class TestEVGate(unittest.TestCase):
         self.assertIn("loto_649", details)
 
 
+class TestGenerationDBPersistenceHook(unittest.TestCase):
+    def test_main_persists_even_when_allocation_has_zero_win_probability(self):
+        zero_allocation = BudgetAllocation(
+            tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
+            total_cost=0.0,
+            p_any_win=0.0,
+            budget=40.0,
+        )
+        with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(recommended_script, "optimize_budget", return_value=zero_allocation), \
+            mock.patch.object(recommended_script, "apply_ev_gate", return_value=(zero_allocation, {})), \
+            mock.patch.object(recommended_script, "format_recommendation", return_value="ok"), \
+            mock.patch.object(recommended_script, "persist_generation_run", return_value=True) as persist, \
+            mock.patch("builtins.print"), \
+            mock.patch("sys.argv", ["generate_recommended_picks.py", "--budget", "40"]):
+            recommended_script.main()
+
+        self.assertEqual(persist.call_count, 1)
+        _, kwargs = persist.call_args
+        self.assertEqual(kwargs["tickets"], [])
+        self.assertEqual(kwargs["allocation"]["p_any_win"], 0.0)
+
+    def test_main_persists_generated_ticket_rows(self):
+        allocation = BudgetAllocation(
+            tickets={"joker": 1, "loto_649": 0, "loto_540": 0},
+            total_cost=8.0,
+            p_any_win=0.1,
+            budget=8.0,
+        )
+        draws = [SimpleNamespace(date="2024-01-01", main_numbers=[1, 2, 3, 4, 5], joker=7)]
+        with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(recommended_script, "optimize_budget", return_value=allocation), \
+            mock.patch.object(recommended_script, "apply_ev_gate", return_value=(allocation, {})), \
+            mock.patch.object(recommended_script, "format_recommendation", return_value="ok"), \
+            mock.patch.object(recommended_script, "load_joker_draws", return_value=draws), \
+            mock.patch.object(
+                recommended_script,
+                "generate_joker_picks",
+                return_value=[([1, 2, 3, 4, 5], 7)],
+            ), \
+            mock.patch.object(recommended_script, "persist_generation_run", return_value=True) as persist, \
+            mock.patch("builtins.print"), \
+            mock.patch("sys.argv", ["generate_recommended_picks.py", "--budget", "8"]):
+            recommended_script.main()
+
+        self.assertEqual(persist.call_count, 1)
+        _, kwargs = persist.call_args
+        self.assertEqual(len(kwargs["tickets"]), 1)
+        self.assertEqual(kwargs["tickets"][0]["game"], "joker")
+        self.assertEqual(kwargs["tickets"][0]["main_numbers"], [1, 2, 3, 4, 5])
+        self.assertEqual(kwargs["tickets"][0]["joker_number"], 7)
+
+
 if __name__ == "__main__":
     unittest.main()
