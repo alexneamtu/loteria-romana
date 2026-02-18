@@ -116,7 +116,7 @@ class _ResultsDB:
                 id TEXT PRIMARY KEY,
                 workflow_run_id TEXT NOT NULL,
                 budget REAL NOT NULL,
-                seed INTEGER,
+                seed BIGINT,
                 ev_gate INTEGER NOT NULL,
                 ev_min_ratio REAL NOT NULL,
                 jackpots_json TEXT NOT NULL,
@@ -173,6 +173,25 @@ class _ResultsDB:
         ]
         for statement in statements:
             self.execute(statement)
+
+        # Backward-compatible fix for existing Postgres schemas where seed was INT4.
+        if self.kind == "postgres":
+            self.execute(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'generation_runs'
+                          AND column_name = 'seed'
+                          AND data_type = 'integer'
+                    ) THEN
+                        ALTER TABLE generation_runs ALTER COLUMN seed TYPE BIGINT;
+                    END IF;
+                END $$;
+                """
+            )
 
 
 def _new_id() -> str:
