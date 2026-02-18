@@ -26,7 +26,10 @@ from shared.advanced_strategies import (
     generate_pattern_picks,
 )
 from shared.ensemble_blend import generate_blended_picks
-from shared.portfolio import optimize_ticket_portfolio
+from shared.joker_set_optimizer import (
+    assign_max_coverage_jokers,
+    optimize_main_ticket_set,
+)
 from shared.recency import resolve_recency_settings
 from shared.bayesian import BayesianScorer
 from shared.cooccurrence import CooccurrenceStrategy
@@ -51,6 +54,24 @@ except ImportError:
 NUMBER_POOL = 45
 NUMBERS_TO_PICK = 5
 SECONDARY_POOL = 20
+
+
+def build_optimized_joker_lines(main_candidates, count, rng):
+    """Build Joker lines with de-duplicated mains and max Joker coverage."""
+    main_picks = optimize_main_ticket_set(
+        candidates=main_candidates,
+        select_count=count,
+        pool_size=NUMBER_POOL,
+        numbers_to_pick=NUMBERS_TO_PICK,
+        rng=rng,
+        anti_crowding_weight=0.35,
+    )
+    jokers = assign_max_coverage_jokers(
+        count=len(main_picks),
+        rng=rng,
+        joker_pool=SECONDARY_POOL,
+    )
+    return list(zip(main_picks, jokers))
 
 
 def get_strategy_by_name(name: str, half_life: float, half_life_mode: str):
@@ -264,8 +285,12 @@ def main():
         print(f"Coverage verified: {is_valid}")
         print()
 
-        for idx, ticket in enumerate(tickets, 1):
-            joker = rng.randint(1, SECONDARY_POOL)
+        jokers = assign_max_coverage_jokers(
+            count=len(tickets),
+            rng=rng,
+            joker_pool=SECONDARY_POOL,
+        )
+        for idx, (ticket, joker) in enumerate(zip(tickets, jokers), 1):
             print(f"{idx}. {', '.join(str(n) for n in ticket)} + J{joker}")
         return
 
@@ -280,7 +305,7 @@ def main():
             half_life_mode=half_life_mode,
             draw_dates=draw_dates,
         )
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(main_picks, args.count, rng)
     elif args.strategy == "smart":
         # Best strategy - combines all techniques
         main_picks = generate_smart_picks(
@@ -292,7 +317,7 @@ def main():
             draw_dates=draw_dates,
             half_life_mode=half_life_mode,
         )
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(main_picks, args.count, rng)
     elif args.strategy == "optimal":
         main_picks = generate_optimal_picks(
             JOKER_CONFIG,
@@ -303,7 +328,7 @@ def main():
             draw_dates=draw_dates,
             half_life_mode=half_life_mode,
         )
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(main_picks, args.count, rng)
     elif args.strategy == "coverage":
         main_picks = generate_coverage_picks(
             JOKER_CONFIG,
@@ -314,7 +339,7 @@ def main():
             draw_dates=draw_dates,
             half_life_mode=half_life_mode,
         )
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(main_picks, args.count, rng)
     elif args.strategy == "pattern":
         main_picks = generate_pattern_picks(
             JOKER_CONFIG,
@@ -325,59 +350,50 @@ def main():
             draw_dates=draw_dates,
             half_life_mode=half_life_mode,
         )
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(main_picks, args.count, rng)
     elif args.strategy == "bayesian":
         strat = BayesianScorer(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick,
                                half_life=half_life, half_life_mode=half_life_mode)
         candidates = strat.generate(draw_main_only, args.count * 3, rng,
                                     draw_dates=draw_dates, half_life_mode=half_life_mode)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "cooccurrence":
         strat = CooccurrenceStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick,
                                      half_life=half_life, half_life_mode=half_life_mode)
         candidates = strat.generate(draw_main_only, args.count * 3, rng,
                                     draw_dates=draw_dates, half_life_mode=half_life_mode)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "genetic":
         strat = GeneticStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "gradient_boost" and GradientBoostStrategy:
         strat = GradientBoostStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick,
                                       JOKER_CONFIG.numbers_drawn)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "lstm" and LSTMStrategy:
         strat = LSTMStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "tcn" and TCNStrategy:
         strat = TCNStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "transformer" and TransformerStrategy:
         strat = TransformerStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "normalizing_flow" and NormalizingFlowStrategy:
         strat = NormalizingFlowStrategy(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "rl" and RLAgent:
         strat = RLAgent(JOKER_CONFIG.pool_size, JOKER_CONFIG.numbers_to_pick)
         candidates = strat.generate(draw_main_only, args.count * 3, rng)
-        main_picks = optimize_ticket_portfolio(candidates, args.count, JOKER_CONFIG.pool_size)
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(candidates, args.count, rng)
     elif args.strategy == "auto":
-        lines = generate_picks(
+        auto_lines = generate_picks(
             draw_tuples,
             count=args.count,
             rng=rng,
@@ -385,6 +401,8 @@ def main():
             half_life_mode=half_life_mode,
             draw_dates=draw_dates,
         )
+        auto_main = [main for main, _ in auto_lines]
+        lines = build_optimized_joker_lines(auto_main, args.count, rng)
     elif args.strategy == "ensemble":
         ensemble = EnsembleVoter(
             get_all_strategies(half_life, half_life_mode),
@@ -398,7 +416,7 @@ def main():
             draw_dates=draw_dates,
             half_life_mode=half_life_mode,
         )
-        lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+        lines = build_optimized_joker_lines(main_picks, args.count, rng)
     else:
         strategy = get_strategy_by_name(args.strategy, half_life, half_life_mode)
         if strategy:
@@ -409,9 +427,9 @@ def main():
                 draw_dates=draw_dates,
                 half_life_mode=half_life_mode,
             )
-            lines = [(main, rng.randint(1, SECONDARY_POOL)) for main in main_picks]
+            lines = build_optimized_joker_lines(main_picks, args.count, rng)
         else:
-            lines = generate_picks(
+            fallback_lines = generate_picks(
                 draw_tuples,
                 count=args.count,
                 rng=rng,
@@ -419,6 +437,8 @@ def main():
                 half_life_mode=half_life_mode,
                 draw_dates=draw_dates,
             )
+            fallback_main = [main for main, _ in fallback_lines]
+            lines = build_optimized_joker_lines(fallback_main, args.count, rng)
 
     for idx, (main, joker) in enumerate(lines, 1):
         print(f"{idx}. {', '.join(str(n) for n in main)} + J{joker}")

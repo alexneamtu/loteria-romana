@@ -15,12 +15,19 @@ import random
 from pathlib import Path
 
 from shared.game_recommender import (
+    BudgetAllocation,
+    TICKET_COSTS,
     calculate_win_probability,
     format_recommendation,
     optimize_budget,
 )
 from shared.game_config import JOKER_CONFIG, LOTO_540_CONFIG, LOTO_649_CONFIG
+from shared.ev_calculator import EVCalculator
 from shared.ensemble_blend import generate_blended_picks
+from shared.joker_set_optimizer import (
+    assign_max_coverage_jokers,
+    optimize_main_ticket_set,
+)
 from shared.recency import resolve_recency_settings
 
 
@@ -52,6 +59,26 @@ def build_parser():
     parser.add_argument(
         "--output-dir", type=str,
         help="Save picks to files in this directory (joker.txt, loto649.txt, loto540.txt)",
+    )
+    parser.add_argument(
+        "--ev-gate", action="store_true",
+        help="Enable EV/jackpot gate before generating picks",
+    )
+    parser.add_argument(
+        "--ev-min-ratio", type=float, default=0.8,
+        help="Minimum jackpot/breakeven ratio required when EV gate is enabled",
+    )
+    parser.add_argument(
+        "--joker-jackpot", type=float,
+        help="Current Joker jackpot in RON (required for Joker EV gating)",
+    )
+    parser.add_argument(
+        "--loto649-jackpot", type=float,
+        help="Current Loto 6/49 jackpot in RON (required for 6/49 EV gating)",
+    )
+    parser.add_argument(
+        "--loto540-jackpot", type=float,
+        help="Current Loto 5/40 jackpot in RON (required for 5/40 EV gating)",
     )
     return parser
 
@@ -91,7 +118,20 @@ def generate_joker_picks(draws, count, rng, half_life, half_life_mode):
         half_life_mode=half_life_mode,
         draw_dates=draw_dates,
     )
-    return [(main, rng.randint(1, JOKER_SECONDARY_POOL)) for main in main_picks]
+    optimized_main = optimize_main_ticket_set(
+        candidates=main_picks,
+        select_count=count,
+        pool_size=JOKER_CONFIG.pool_size,
+        numbers_to_pick=JOKER_CONFIG.numbers_to_pick,
+        rng=rng,
+        anti_crowding_weight=0.35,
+    )
+    jokers = assign_max_coverage_jokers(
+        count=len(optimized_main),
+        rng=rng,
+        joker_pool=JOKER_SECONDARY_POOL,
+    )
+    return list(zip(optimized_main, jokers))
 
 
 def load_loto_540_draws():
@@ -137,6 +177,110 @@ def generate_649_picks(draws, count, rng, half_life, half_life_mode):
     return main_picks
 
 
+def _optimize_budget_with_allowed_games(
+    budget_ron: float,
+    allowed_games: set[str],
+) -> BudgetAllocation:
+    if budget_ron < min(TICKET_COSTS.values()):
+        return BudgetAllocation(budget=budget_ron)
+
+    probabilities = {
+        game: calculate_win_probability(game).win_rate
+        for game in TICKET_COSTS
+    }
+    budget = int(budget_ron)
+    best = BudgetAllocation(budget=budget_ron)
+
+    joker_range = range(budget // 8 + 1) if "joker" in allowed_games else [0]
+    loto649_range_template = range(budget // 6 + 1) if "loto_649" in allowed_games else [0]
+    loto540_allowed = "loto_540" in allowed_games
+
+    for n_joker in joker_range:
+        remaining_after_joker = budget - n_joker * 8
+        loto649_range = loto649_range_template if "loto_649" in allowed_games else [0]
+        for n_649 in loto649_range:
+            cost_649 = n_649 * 6
+            if cost_649 > remaining_after_joker:
+                continue
+            remaining = remaining_after_joker - cost_649
+            n_540 = remaining // 4 if loto540_allowed else 0
+
+            tickets = {"joker": n_joker, "loto_649": n_649, "loto_540": n_540}
+            total_tickets = sum(tickets.values())
+            if total_tickets == 0:
+                continue
+
+            p_no_win = 1.0
+            for game, count in tickets.items():
+                if count <= 0:
+                    continue
+                p_no_win *= (1 - probabilities[game]) ** count
+            p_any = 1 - p_no_win
+            cost = n_joker * 8 + n_649 * 6 + n_540 * 4
+
+            if p_any > best.p_any_win:
+                best = BudgetAllocation(
+                    tickets=tickets,
+                    total_cost=float(cost),
+                    p_any_win=p_any,
+                    budget=budget_ron,
+                )
+
+    return best
+
+
+def apply_ev_gate(
+    allocation: BudgetAllocation,
+    enabled: bool,
+    min_ratio: float,
+    jackpots: dict[str, float],
+) -> tuple[BudgetAllocation, dict[str, dict[str, float | bool]]]:
+    """Filter allocation by jackpot/breakeven ratio when gate is enabled."""
+    if not enabled:
+        return allocation, {}
+
+    calc = EVCalculator()
+    games = {
+        "joker": calc.create_joker(ticket_cost=TICKET_COSTS["joker"]),
+        "loto_649": calc.create_loto_649(ticket_cost=TICKET_COSTS["loto_649"]),
+        "loto_540": calc.create_loto_540(ticket_cost=TICKET_COSTS["loto_540"]),
+    }
+
+    details: dict[str, dict[str, float | bool]] = {}
+    allowed_games: set[str] = set()
+
+    for game_name, game in games.items():
+        jackpot = jackpots.get(game_name)
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        ratio = 0.0
+        if jackpot and breakeven and breakeven > 0:
+            ratio = jackpot / breakeven
+        passes = ratio >= min_ratio if jackpot is not None else False
+        if passes:
+            allowed_games.add(game_name)
+        details[game_name] = {
+            "jackpot": float(jackpot) if jackpot is not None else 0.0,
+            "breakeven": float(breakeven) if breakeven is not None else 0.0,
+            "ratio": ratio,
+            "passes": passes,
+        }
+
+    if not allowed_games:
+        filtered = BudgetAllocation(
+            tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
+            total_cost=0.0,
+            p_any_win=0.0,
+            budget=allocation.budget,
+        )
+        return filtered, details
+
+    filtered = _optimize_budget_with_allowed_games(
+        budget_ron=allocation.budget,
+        allowed_games=allowed_games,
+    )
+    return filtered, details
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
@@ -154,6 +298,17 @@ def main():
     rng = random.Random(args.seed) if args.seed is not None else random.SystemRandom()
 
     allocation = optimize_budget(args.budget)
+    jackpots = {
+        "joker": args.joker_jackpot,
+        "loto_649": args.loto649_jackpot,
+        "loto_540": args.loto540_jackpot,
+    }
+    allocation, gate_details = apply_ev_gate(
+        allocation=allocation,
+        enabled=args.ev_gate,
+        min_ratio=args.ev_min_ratio,
+        jackpots=jackpots,
+    )
     print(format_recommendation(allocation))
 
     if args.verbose:
@@ -166,6 +321,18 @@ def main():
                 f"{gp.ticket_cost:.0f} RON, "
                 f"{gp.win_rate_per_ron * 100:.4f}%/RON"
             )
+        if args.ev_gate:
+            print()
+            print(f"EV gate enabled (min jackpot/breakeven ratio: {args.ev_min_ratio:.2f})")
+            for game_name in ["joker", "loto_649", "loto_540"]:
+                info = gate_details.get(game_name, {})
+                status = "pass" if info.get("passes") else "blocked"
+                print(
+                    f"  {game_name}: {status} "
+                    f"(jackpot={info.get('jackpot', 0):.0f}, "
+                    f"breakeven={info.get('breakeven', 0):.0f}, "
+                    f"ratio={info.get('ratio', 0):.3f})"
+                )
 
     if allocation.p_any_win == 0:
         return

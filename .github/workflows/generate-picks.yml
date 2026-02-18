@@ -11,6 +11,31 @@ on:
         required: false
         default: '40'
         type: string
+      ev_gate:
+        description: 'Enable EV/jackpot gate before generating picks'
+        required: false
+        default: 'false'
+        type: string
+      ev_min_ratio:
+        description: 'Minimum jackpot/breakeven ratio when EV gate is enabled'
+        required: false
+        default: '0.80'
+        type: string
+      joker_jackpot:
+        description: 'Current Joker jackpot (RON)'
+        required: false
+        default: ''
+        type: string
+      loto649_jackpot:
+        description: 'Current Loto 6/49 jackpot (RON)'
+        required: false
+        default: ''
+        type: string
+      loto540_jackpot:
+        description: 'Current Loto 5/40 jackpot (RON)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   actions: write
@@ -42,15 +67,47 @@ jobs:
           if [ -z "$budget" ] || ! [[ "$budget" =~ ^[0-9]+$ ]]; then
             budget="40"
           fi
+          ev_gate="${{ github.event.inputs.ev_gate }}"
+          if [ "$ev_gate" != "true" ]; then
+            ev_gate="false"
+          fi
+          ev_min_ratio="${{ github.event.inputs.ev_min_ratio }}"
+          if [ -z "$ev_min_ratio" ]; then
+            ev_min_ratio="0.80"
+          fi
+          joker_jackpot="${{ github.event.inputs.joker_jackpot }}"
+          loto649_jackpot="${{ github.event.inputs.loto649_jackpot }}"
+          loto540_jackpot="${{ github.event.inputs.loto540_jackpot }}"
           echo "budget=$budget" >> "$GITHUB_OUTPUT"
+          echo "ev_gate=$ev_gate" >> "$GITHUB_OUTPUT"
+          echo "ev_min_ratio=$ev_min_ratio" >> "$GITHUB_OUTPUT"
+          echo "joker_jackpot=$joker_jackpot" >> "$GITHUB_OUTPUT"
+          echo "loto649_jackpot=$loto649_jackpot" >> "$GITHUB_OUTPUT"
+          echo "loto540_jackpot=$loto540_jackpot" >> "$GITHUB_OUTPUT"
 
       - name: Generate recommended picks
         run: |
-          PYTHONPATH=src python scripts/generate_recommended_picks.py \
+          cmd=(python scripts/generate_recommended_picks.py \
             --budget ${{ steps.config.outputs.budget }} \
             --seed ${{ github.run_id }} \
             --output-dir picks \
-            --verbose
+            --verbose)
+
+          if [ "${{ steps.config.outputs.ev_gate }}" = "true" ]; then
+            cmd+=(--ev-gate --ev-min-ratio "${{ steps.config.outputs.ev_min_ratio }}")
+
+            if [ -n "${{ steps.config.outputs.joker_jackpot }}" ]; then
+              cmd+=(--joker-jackpot "${{ steps.config.outputs.joker_jackpot }}")
+            fi
+            if [ -n "${{ steps.config.outputs.loto649_jackpot }}" ]; then
+              cmd+=(--loto649-jackpot "${{ steps.config.outputs.loto649_jackpot }}")
+            fi
+            if [ -n "${{ steps.config.outputs.loto540_jackpot }}" ]; then
+              cmd+=(--loto540-jackpot "${{ steps.config.outputs.loto540_jackpot }}")
+            fi
+          fi
+
+          PYTHONPATH=src "${cmd[@]}"
 
       - name: Record picks date
         run: date +"%Y-%m-%d" > picks/date.txt
