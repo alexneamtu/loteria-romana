@@ -1,11 +1,14 @@
 import csv
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import check_results
 from check_results import append_history, parse_picks, check_matches, HISTORY_COLUMNS
 
 
@@ -70,3 +73,57 @@ class TestAppendHistory(unittest.TestCase):
                 reader = csv.DictReader(f)
                 data = list(reader)
             self.assertEqual(len(data), 0)
+
+
+class TestMainDBPersistenceHook(unittest.TestCase):
+    def test_main_calls_db_persistence_with_history_rows(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            picks_dir = Path(tmpdir) / "picks"
+            results_dir = Path(tmpdir) / "results"
+            history_csv = Path(tmpdir) / "history.csv"
+            picks_dir.mkdir(parents=True, exist_ok=True)
+
+            game_payload = (
+                "2026-02-18",
+                "1, 2, 3, 4, 5",
+                "msg",
+                {
+                    "recommended": {
+                        "results": [{"pick": [1, 2, 3, 4, 5], "matched": [1], "count": 1}],
+                        "score": 1,
+                        "best_match": 1,
+                    }
+                },
+            )
+
+            with mock.patch.object(
+                check_results,
+                "fetch_results_with_retry",
+                return_value=([], [], []),
+            ), \
+                mock.patch.object(
+                    check_results,
+                    "process_game",
+                    return_value=game_payload,
+                ), \
+                mock.patch.object(check_results, "append_history") as append_history_mock, \
+                mock.patch.object(check_results, "persist_check_results", return_value=True) as persist_mock, \
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "PICKS_DIR": str(picks_dir),
+                        "RESULTS_DIR": str(results_dir),
+                        "HISTORY_CSV": str(history_csv),
+                        "MAX_RETRIES": "3",
+                        "RETRY_DELAY_MINUTES": "5",
+                    },
+                    clear=False,
+                ):
+                check_results.main()
+
+            self.assertEqual(append_history_mock.call_count, 1)
+            self.assertEqual(persist_mock.call_count, 1)
+            _, kwargs = persist_mock.call_args
+            self.assertEqual(kwargs["max_retries"], 3)
+            self.assertEqual(kwargs["retry_delay_minutes"], 5)
+            self.assertEqual(len(kwargs["history_rows"]), 3)

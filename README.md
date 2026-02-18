@@ -263,6 +263,14 @@ To enable Telegram notifications, set repository secrets:
 - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
 - `TELEGRAM_CHAT_ID`: Your Telegram chat ID
 
+Optional database persistence for generation/check runs:
+- `DATABASE_URL`: PostgreSQL DSN (recommended for persistent cross-run history)
+- `RESULTS_DB_PATH`: SQLite file path fallback (used only when `DATABASE_URL` is not set)
+
+When configured, scripts dual-write:
+- Existing files (`picks/*.txt`, `results/*.txt`, `data/results/history.csv`)
+- Database tables: `workflow_runs`, `generation_runs`, `generated_tickets`, `check_runs`, `check_results`
+
 ## Data Sources
 
 - Joker results:
