@@ -96,6 +96,7 @@ jobs:
             --budget ${{ steps.config.outputs.budget }} \
             --seed ${{ github.run_id }} \
             --output-dir picks \
+            --mixes 3 \
             --verbose)
 
           if [ "${{ steps.config.outputs.ev_gate }}" = "true" ]; then
@@ -139,23 +140,35 @@ jobs:
               -d parse_mode="Markdown" > /dev/null
           }
 
-          # Send Joker picks
-          if [ -f "picks/joker.txt" ]; then
-            JOKER_CONTENT=$(cat picks/joker.txt)
-            MSG=$(printf '🃏 *JOKER Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$JOKER_CONTENT")
+          # Send mixes summary if available
+          if [ -f "picks/mixes_summary.txt" ]; then
+            SUMMARY=$(cat picks/mixes_summary.txt)
+            MSG=$(printf '🎰 *Lottery Picks - %s*\nBudget: %s RON\n\n%s' "$DATE" "$BUDGET" "$SUMMARY")
             send_message "$MSG"
           fi
 
-          # Send Loto 6/49 picks
-          if [ -f "picks/loto649.txt" ]; then
-            LOTO_CONTENT=$(cat picks/loto649.txt)
-            MSG=$(printf '🎱 *LOTO 6/49 Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$LOTO_CONTENT")
-            send_message "$MSG"
-          fi
+          # Send picks for each mix (or single allocation)
+          for mix_suffix in "" "_mix1" "_mix2" "_mix3"; do
+            LABEL=""
+            if [ -n "$mix_suffix" ]; then
+              LABEL=" (${mix_suffix#_})"
+            fi
 
-          # Send Loto 5/40 picks
-          if [ -f "picks/loto540.txt" ]; then
-            LOTO540_CONTENT=$(cat picks/loto540.txt)
-            MSG=$(printf '🎯 *LOTO 5/40 Picks - %s*\nBudget: %s RON\n```\n%s\n```' "$DATE" "$BUDGET" "$LOTO540_CONTENT")
-            send_message "$MSG"
-          fi
+            if [ -f "picks/joker${mix_suffix}.txt" ]; then
+              CONTENT=$(cat "picks/joker${mix_suffix}.txt")
+              MSG=$(printf '🃏 *JOKER%s - %s*\n```\n%s\n```' "$LABEL" "$DATE" "$CONTENT")
+              send_message "$MSG"
+            fi
+
+            if [ -f "picks/loto649${mix_suffix}.txt" ]; then
+              CONTENT=$(cat "picks/loto649${mix_suffix}.txt")
+              MSG=$(printf '🎱 *LOTO 6/49%s - %s*\n```\n%s\n```' "$LABEL" "$DATE" "$CONTENT")
+              send_message "$MSG"
+            fi
+
+            if [ -f "picks/loto540${mix_suffix}.txt" ]; then
+              CONTENT=$(cat "picks/loto540${mix_suffix}.txt")
+              MSG=$(printf '🎯 *LOTO 5/40%s - %s*\n```\n%s\n```' "$LABEL" "$DATE" "$CONTENT")
+              send_message "$MSG"
+            fi
+          done

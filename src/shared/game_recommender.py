@@ -156,6 +156,55 @@ def optimize_budget(budget_ron: float) -> BudgetAllocation:
     return best
 
 
+def top_diverse_allocations(budget_ron: float, count: int = 3) -> list[BudgetAllocation]:
+    """Find top N allocations with diverse game mixes.
+
+    Returns allocations sorted by P(any win), ensuring each has a
+    different set of active games (games with tickets > 0).
+    """
+    if budget_ron < min(TICKET_COSTS.values()):
+        return []
+
+    probabilities = {
+        "joker": _joker_win_probability(),
+        "loto_649": _loto_649_win_probability(),
+        "loto_540": _loto_540_win_probability(),
+    }
+
+    # Collect all valid allocations grouped by active game set
+    by_mix: dict[frozenset[str], BudgetAllocation] = {}
+    budget = int(budget_ron)
+
+    max_joker = budget // 8
+    for n_joker in range(max_joker + 1):
+        remaining_after_joker = budget - n_joker * 8
+        max_649 = remaining_after_joker // 6
+        for n_649 in range(max_649 + 1):
+            remaining = remaining_after_joker - n_649 * 6
+            n_540 = remaining // 4
+
+            tickets = {"joker": n_joker, "loto_649": n_649, "loto_540": n_540}
+            active = frozenset(g for g, c in tickets.items() if c > 0)
+            if not active:
+                continue
+
+            cost = n_joker * 8 + n_649 * 6 + n_540 * 4
+            p = _p_any_win(probabilities, tickets)
+
+            prev = by_mix.get(active)
+            if prev is None or p > prev.p_any_win:
+                by_mix[active] = BudgetAllocation(
+                    tickets=tickets,
+                    total_cost=float(cost),
+                    p_any_win=p,
+                    budget=budget_ron,
+                )
+
+    # Sort by P(any win) descending, take top N
+    ranked = sorted(by_mix.values(), key=lambda a: a.p_any_win, reverse=True)
+    return ranked[:count]
+
+
 def format_recommendation(allocation: BudgetAllocation) -> str:
     """Format a budget allocation as a human-readable recommendation."""
     if allocation.p_any_win == 0:
