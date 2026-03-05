@@ -1,6 +1,6 @@
 import unittest
 
-from shared.holdout import split_holdout, HoldoutSplit
+from shared.holdout import split_holdout, HoldoutSplit, TemporalSplit, temporal_holdout_split
 
 
 class TestSplitHoldout(unittest.TestCase):
@@ -39,6 +39,62 @@ class TestSplitHoldout(unittest.TestCase):
         result = split_holdout(draws, holdout_size=3, dates=dates)
         self.assertEqual(len(result.train_dates), 7)
         self.assertEqual(len(result.holdout_dates), 3)
+
+
+def _make_draws(count):
+    """Create anonymous draw objects with date and main_numbers attributes."""
+    return [
+        type("Draw", (), {
+            "date": f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}",
+            "main_numbers": [i],
+        })()
+        for i in range(count)
+    ]
+
+
+class TestTemporalHoldoutSplit(unittest.TestCase):
+
+    def test_basic_split(self):
+        draws = _make_draws(200)
+        result = temporal_holdout_split(draws, holdout_size=50)
+        self.assertIsInstance(result, TemporalSplit)
+        self.assertEqual(len(result.train), 150)
+        self.assertEqual(len(result.holdout), 50)
+        self.assertEqual(result.holdout_size, 50)
+
+    def test_holdout_is_most_recent(self):
+        draws = _make_draws(200)
+        result = temporal_holdout_split(draws, holdout_size=50)
+        self.assertEqual(result.holdout, draws[-50:])
+        self.assertEqual(result.train, draws[:150])
+
+    def test_default_holdout_100(self):
+        draws = _make_draws(500)
+        result = temporal_holdout_split(draws)
+        self.assertEqual(len(result.train), 400)
+        self.assertEqual(len(result.holdout), 100)
+        self.assertEqual(result.holdout_size, 100)
+
+    def test_holdout_larger_than_data(self):
+        draws = _make_draws(50)
+        result = temporal_holdout_split(draws, holdout_size=100)
+        # Cap at 20% of 50 = 10
+        self.assertEqual(len(result.holdout), 10)
+        self.assertEqual(len(result.train), 40)
+        self.assertEqual(result.holdout_size, 10)
+
+    def test_split_date_boundary(self):
+        draws = _make_draws(200)
+        result = temporal_holdout_split(draws, holdout_size=50)
+        expected_date = str(draws[150].date)
+        self.assertEqual(result.split_date, expected_date)
+
+    def test_no_overlap(self):
+        draws = _make_draws(200)
+        result = temporal_holdout_split(draws, holdout_size=50)
+        train_ids = {id(obj) for obj in result.train}
+        holdout_ids = {id(obj) for obj in result.holdout}
+        self.assertEqual(len(train_ids & holdout_ids), 0)
 
 
 if __name__ == "__main__":

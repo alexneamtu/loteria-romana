@@ -659,3 +659,110 @@ def generate_backtest_report(results: list[BacktestResult]) -> str:
     lines.append("=" * 60)
 
     return "\n".join(lines)
+
+
+@dataclass
+class CorrectedResult:
+    """Result of multiple-hypothesis-corrected significance testing."""
+
+    strategy: str
+    raw_p_value: float
+    adjusted_p_value: float
+    effect_size: float  # Cohen's h
+    verdict: str  # "excluded" | "included"
+    weight_scale: float  # 0.0 if excluded, effect-size-scaled if included
+
+
+def cohens_h(p1: float, p2: float) -> float:
+    """Compute Cohen's h effect size for two proportions."""
+    return 2.0 * math.asin(math.sqrt(p1)) - 2.0 * math.asin(math.sqrt(p2))
+
+
+def correct_significance(
+    strategy_results: list[BacktestResult],
+    baseline_rate: float,
+    fdr_threshold: float = 0.10,
+    min_effect_size: float = 0.01,
+) -> list[CorrectedResult]:
+    """Apply Benjamini-Hochberg correction with effect size filtering.
+
+    Tiered approach:
+    1. Compute raw p-values per strategy (z-test vs baseline)
+    2. Apply BH at fdr_threshold — failures get weight=0
+    3. Survivors weighted by Cohen's h effect size
+    4. Below min_effect_size also excluded
+    """
+    entries: list[dict] = []
+
+    for result in strategy_results:
+        n = result.total_tickets
+        if n == 0:
+            entries.append({
+                "strategy": result.strategy_name,
+                "raw_p": 1.0,
+                "effect_size": 0.0,
+                "win_rate": 0.0,
+            })
+            continue
+
+        p_hat = result.win_rate
+        p0 = baseline_rate
+
+        # One-tailed z-test (we only care if strategy beats baseline)
+        se = math.sqrt(p0 * (1 - p0) / n) if 0 < p0 < 1 else 0.0
+        if se > 0 and p_hat > p0:
+            z = (p_hat - p0) / se
+            raw_p = 1.0 - _normal_cdf(z)
+        else:
+            raw_p = 1.0
+
+        effect = abs(cohens_h(p_hat, p0))
+
+        entries.append({
+            "strategy": result.strategy_name,
+            "raw_p": raw_p,
+            "effect_size": effect,
+            "win_rate": p_hat,
+        })
+
+    # Benjamini-Hochberg correction
+    sorted_entries = sorted(entries, key=lambda e: e["raw_p"])
+    m = len(sorted_entries)
+    adjusted_p_values: dict[str, float] = {}
+
+    prev_adj = 1.0
+    for i in range(m - 1, -1, -1):
+        rank = i + 1
+        raw_p = sorted_entries[i]["raw_p"]
+        adj = min(prev_adj, raw_p * m / rank)
+        adj = min(adj, 1.0)
+        adjusted_p_values[sorted_entries[i]["strategy"]] = adj
+        prev_adj = adj
+
+    # Build results
+    corrected: list[CorrectedResult] = []
+    for entry in entries:
+        name = entry["strategy"]
+        adj_p = adjusted_p_values[name]
+        effect = entry["effect_size"]
+
+        if adj_p >= fdr_threshold:
+            verdict = "excluded"
+            weight = 0.0
+        elif effect < min_effect_size:
+            verdict = "excluded"
+            weight = 0.0
+        else:
+            verdict = "included"
+            weight = effect  # Weight proportional to effect size
+
+        corrected.append(CorrectedResult(
+            strategy=name,
+            raw_p_value=entry["raw_p"],
+            adjusted_p_value=adj_p,
+            effect_size=effect,
+            verdict=verdict,
+            weight_scale=weight,
+        ))
+
+    return corrected

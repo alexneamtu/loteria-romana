@@ -4,7 +4,10 @@ Reserves the most recent N draws as a final holdout set
 that is never used during strategy development or backtesting.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -61,4 +64,50 @@ def split_holdout(
         holdout=draws[split_idx:],
         train_dates=dates[:split_idx] if dates else [],
         holdout_dates=dates[split_idx:] if dates else [],
+    )
+
+
+@dataclass
+class TemporalSplit:
+    """Result of a temporal train/holdout split on draw objects."""
+
+    train: list
+    holdout: list
+    holdout_size: int
+    split_date: Any  # date string of first holdout draw
+
+
+def temporal_holdout_split(
+    draws: list, holdout_size: int = 100
+) -> TemporalSplit:
+    """Split draw objects into train and holdout by chronological order.
+
+    Holdout is always the last *holdout_size* draws. If holdout_size
+    exceeds 80 % of the data the holdout is capped at 20 % to preserve
+    sufficient training data.  No shuffling is performed.
+
+    Args:
+        draws: Draw objects ordered oldest-first. Each must have a
+            ``date`` attribute.
+        holdout_size: Number of most-recent draws to reserve.
+
+    Returns:
+        A ``TemporalSplit`` with disjoint train / holdout lists.
+    """
+    total = len(draws)
+
+    if holdout_size > int(total * 0.8):
+        holdout_size = int(total * 0.2)
+
+    split_index = total - holdout_size
+    train = draws[:split_index]
+    holdout = draws[split_index:]
+
+    split_date = str(holdout[0].date) if holdout else None
+
+    return TemporalSplit(
+        train=train,
+        holdout=holdout,
+        holdout_size=holdout_size,
+        split_date=split_date,
     )
