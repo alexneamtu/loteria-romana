@@ -26,6 +26,7 @@ from .drift_detection import adwin_detect_drift
 from .runs_test import per_number_runs_analysis
 from .regime import detect_regimes
 from .portfolio import optimize_ticket_portfolio
+from .backtest_base import correct_significance as _bh_correct_significance, BacktestResult as _BacktestResult
 
 try:
     from .gradient_boost import GradientBoostStrategy, SKLEARN_AVAILABLE as _GB_AVAILABLE
@@ -231,6 +232,52 @@ def _apply_significance_gate(
     return gated
 
 
+def _apply_corrected_significance_gate(
+    scores: dict[str, int],
+    baseline_score: int,
+    total_draws: int,
+    min_draws: int = 30,
+    fdr_threshold: float = 0.10,
+    min_effect_size: float = 0.01,
+) -> dict[str, int]:
+    """Apply BH-corrected significance gate with effect size filtering.
+
+    Falls back to simple gate if fewer than 3 non-random strategies.
+    """
+    if total_draws < min_draws:
+        return dict(scores)
+
+    non_random = {k: v for k, v in scores.items() if k != "random"}
+    if len(non_random) < 3:
+        return _apply_significance_gate(scores, baseline_score, total_draws, min_draws)
+
+    baseline_rate = baseline_score / total_draws if total_draws > 0 else 0.0
+
+    bt_results = []
+    for name, score in non_random.items():
+        bt_results.append(_BacktestResult(
+            strategy_name=name,
+            total_draws=total_draws,
+            total_tickets=total_draws,
+            total_wins=score,
+            win_rate=score / total_draws if total_draws > 0 else 0.0,
+        ))
+
+    corrected = _bh_correct_significance(
+        bt_results, baseline_rate, fdr_threshold, min_effect_size,
+    )
+
+    gated = {"random": scores.get("random", baseline_score)}
+    for cr in corrected:
+        if cr.verdict == "included":
+            gated[cr.strategy] = scores[cr.strategy]
+
+    if len(gated) < 2:
+        return dict(scores)
+
+    return gated
+
+
 def generate_blended_picks(
     config: GameConfig,
     draws: list[list[int]],
@@ -377,7 +424,7 @@ def generate_blended_picks(
 
     # Apply significance gate
     baseline_score = scores.get("random", 1)
-    scores = _apply_significance_gate(scores, baseline_score, len(scoring_draws))
+    scores = _apply_corrected_significance_gate(scores, baseline_score, len(scoring_draws))
 
     raw_weights = softmax([float(s) for s in scores.values()])
     weights = dict(zip(scores.keys(), raw_weights))
