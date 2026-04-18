@@ -3,7 +3,7 @@ import unittest
 
 from shared.game_config import JOKER_CONFIG, LOTO_540_CONFIG, LOTO_649_CONFIG
 from shared.ticket import Ticket
-from shared.ticket_builders import BuilderContext, IndependentBuilder
+from shared.ticket_builders import BuilderContext, CoreShareBuilder, IndependentBuilder
 
 
 def _joker_draws():
@@ -118,6 +118,78 @@ class TestIndependentBuilder(unittest.TestCase):
         )
         tickets = IndependentBuilder(n_tickets=3).build(ctx)
         self.assertEqual(len(tickets), 3)
+
+
+class TestCoreShareBuilder(unittest.TestCase):
+    def test_joker_all_variants_share_3_core_numbers(self):
+        ctx = BuilderContext(
+            game="joker",
+            config=JOKER_CONFIG,
+            draws=_joker_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        t = CoreShareBuilder().build(ctx)[0]
+        shared_main = set(t.variants[0].main_numbers) & set(t.variants[1].main_numbers)
+        self.assertGreaterEqual(len(shared_main), 3)
+        self.assertEqual(t.strategy, "core_share")
+
+    def test_loto_649_all_variants_share_4_core_numbers(self):
+        ctx = BuilderContext(
+            game="loto_649",
+            config=LOTO_649_CONFIG,
+            draws=_649_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        t = CoreShareBuilder().build(ctx)[0]
+        shared = (
+            set(t.variants[0].main_numbers)
+            & set(t.variants[1].main_numbers)
+            & set(t.variants[2].main_numbers)
+        )
+        self.assertGreaterEqual(len(shared), 4)
+
+    def test_loto_540_all_variants_share_3_core_numbers(self):
+        ctx = BuilderContext(
+            game="loto_540",
+            config=LOTO_540_CONFIG,
+            draws=_540_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        t = CoreShareBuilder().build(ctx)[0]
+        shared = (
+            set(t.variants[0].main_numbers)
+            & set(t.variants[1].main_numbers)
+            & set(t.variants[2].main_numbers)
+            & set(t.variants[3].main_numbers)
+        )
+        self.assertGreaterEqual(len(shared), 3)
+
+    def test_variants_are_distinct(self):
+        ctx = BuilderContext(
+            game="joker",
+            config=JOKER_CONFIG,
+            draws=_joker_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        t = CoreShareBuilder().build(ctx)[0]
+        self.assertNotEqual(t.variants[0].main_numbers, t.variants[1].main_numbers)
+
+    def test_seeded_reproducibility(self):
+        ctx1 = BuilderContext(
+            game="joker", config=JOKER_CONFIG, draws=_joker_draws(),
+            draw_dates=None, rng=random.Random(99),
+        )
+        ctx2 = BuilderContext(
+            game="joker", config=JOKER_CONFIG, draws=_joker_draws(),
+            draw_dates=None, rng=random.Random(99),
+        )
+        t1 = CoreShareBuilder().build(ctx1)[0]
+        t2 = CoreShareBuilder().build(ctx2)[0]
+        self.assertEqual(t1.variants[0].main_numbers, t2.variants[0].main_numbers)
 
 
 if __name__ == "__main__":
