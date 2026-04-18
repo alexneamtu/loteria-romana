@@ -96,7 +96,7 @@ jobs:
             --budget ${{ steps.config.outputs.budget }} \
             --seed ${{ github.run_id }} \
             --output-dir picks \
-            --mixes 3 \
+            --mixes 1 \
             --verbose)
 
           if [ "${{ steps.config.outputs.ev_gate }}" = "true" ]; then
