@@ -13,6 +13,7 @@ def parse_loto_649_results(html: str) -> list[Loto649Draw]:
     date_pattern = re.compile(r"Detalii castiguri[^<]*<span>(\d{2}\.\d{2}\.\d{4})</span>", re.IGNORECASE)
 
     main_by_date: dict[str, list[int]] = {}
+    noroc_by_date: dict[str, str | None] = {}
 
     for block in blocks:
         date_match = date_pattern.search(block)
@@ -24,8 +25,11 @@ def parse_loto_649_results(html: str) -> list[Loto649Draw]:
         if len(numbers) >= 6:
             main_by_date[date] = sorted(numbers[-6:])
 
+        noroc_digits = re.findall(r"/bile/noroc/(\d)\.png", block)
+        noroc_by_date[date] = "".join(noroc_digits) if len(noroc_digits) == 7 else None
+
     draws = []
     for date, main in sorted(main_by_date.items()):
-        draws.append(Loto649Draw(date, main))
+        draws.append(Loto649Draw(date, main, noroc_by_date.get(date)))
 
     return draws
