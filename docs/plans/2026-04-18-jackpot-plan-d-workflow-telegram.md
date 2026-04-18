@@ -669,6 +669,8 @@ Replace the entire `Send picks to Telegram` step with:
 
 The `--data-urlencode` is important — prior yaml used `-d text=...` which mangles special characters in ticket numbers and asterisks. Switch every curl that posts user content to `--data-urlencode`.
 
+Also in the same file, under the `workflow_dispatch.inputs.budget` block, change the default from `'40'` to `'70'` so scheduled runs and the manual-trigger form both default to 70 RON (fits one full ticket of each game — Joker 17.5 + 6/49 28.5 + 5/40 22.5 = 68.5 RON). The existing Plan C commit will have already changed any behavior depending on `--budget`; this edit is purely the workflow input default.
+
 Validate yaml syntax locally:
 ```bash
 python -c "import yaml; yaml.safe_load(open('.github/workflows/generate-picks.yml'))"
@@ -768,7 +770,7 @@ In `tests/test_generate_recommended_picks.py` find `test_legacy_txt_files_still_
                 [
                     sys.executable,
                     "scripts/generate_recommended_picks.py",
-                    "--budget", "40", "--seed", "42",
+                    "--budget", "70", "--seed", "42",
                     "--output-dir", str(out), "--strategy", "independent",
                 ],
                 env={"PYTHONPATH": "src", "PATH": ""},
@@ -866,7 +868,7 @@ git commit -m "feat(checker): retry fetch while side-game numbers are missing"
 ```bash
 rm -rf /tmp/pd-e2e && mkdir -p /tmp/pd-e2e
 PYTHONPATH=src python scripts/generate_recommended_picks.py \
-  --budget 40 --seed 42 --strategy core_share --output-dir /tmp/pd-e2e
+  --budget 70 --seed 42 --strategy core_share --output-dir /tmp/pd-e2e
 echo "--- tickets.json ---"
 cat /tmp/pd-e2e/tickets.json | python -m json.tool
 echo ""

@@ -10,6 +10,8 @@
 
 **Prerequisites:** Plans A and B merged. Feature branch: `feature/jackpot-c-orchestrator-ev-gate`.
 
+**Budget default change:** raise the script/workflow default from **40 RON** to **70 RON** so one full ticket of each game fits (17.5 + 28.5 + 22.5 = 68.5 RON; 1.5 RON unspent). At 40 RON the allocator can only fit two games per draw. The 40 RON test is kept as a parametric check, but 70 RON is the default that the scheduled workflow runs at.
+
 **Scope boundary:**
 - DO: allocator, orchestrator rewrite, `tickets.json`, check_results side-game scoring, ledger, legacy-cost removal.
 - DO NOT: change Telegram formatter or GitHub Actions yaml (Plan D). Do not alter historical CSV fixtures beyond the columns Plan A migrated.
@@ -73,6 +75,16 @@ class TestTicketAllocator(unittest.TestCase):
         ]
         # 17.5 + 28.5 = 46 — over budget
         self.assertEqual(joker_plus_649, [])
+
+    def test_70_ron_fits_all_three_games(self):
+        allocs = enumerate_allocations(budget_ron=70.0)
+        # Expect: 1 joker + 1 loto_649 + 1 loto_540 = 17.5 + 28.5 + 22.5 = 68.5
+        all_three = [
+            a for a in allocs
+            if a.tickets == {"joker": 1, "loto_649": 1, "loto_540": 1}
+        ]
+        self.assertEqual(len(all_three), 1)
+        self.assertAlmostEqual(all_three[0].total_cost, 68.5, places=2)
 
     def test_zero_allocation_excluded(self):
         allocs = enumerate_allocations(budget_ron=40.0)
@@ -816,7 +828,7 @@ class TestGenerateTicketsJSON(unittest.TestCase):
                 [
                     sys.executable,
                     "scripts/generate_recommended_picks.py",
-                    "--budget", "40",
+                    "--budget", "70",
                     "--seed", "42",
                     "--output-dir", str(out),
                     "--strategy", "independent",
@@ -826,11 +838,12 @@ class TestGenerateTicketsJSON(unittest.TestCase):
             tickets_path = out / "tickets.json"
             self.assertTrue(tickets_path.exists())
             doc = json.loads(tickets_path.read_text())
-            self.assertEqual(doc["budget_ron"], 40.0)
+            self.assertEqual(doc["budget_ron"], 70.0)
             self.assertGreater(len(doc["tickets"]), 0)
-            # 40 RON best fits 1 joker + 1 loto_540
+            # 70 RON best fits all three games (17.5 + 28.5 + 22.5 = 68.5)
             games = [t["game"] for t in doc["tickets"]]
             self.assertIn("joker", games)
+            self.assertIn("loto_649", games)
             self.assertIn("loto_540", games)
 
     def test_each_ticket_has_correct_variant_count(self):
@@ -840,7 +853,7 @@ class TestGenerateTicketsJSON(unittest.TestCase):
                 [
                     sys.executable,
                     "scripts/generate_recommended_picks.py",
-                    "--budget", "40",
+                    "--budget", "70",
                     "--seed", "42",
                     "--output-dir", str(out),
                     "--strategy", "core_share",
@@ -859,7 +872,7 @@ class TestGenerateTicketsJSON(unittest.TestCase):
                 [
                     sys.executable,
                     "scripts/generate_recommended_picks.py",
-                    "--budget", "40",
+                    "--budget", "70",
                     "--seed", "42",
                     "--output-dir", str(out),
                     "--strategy", "independent",
@@ -963,7 +976,7 @@ Integration sanity check:
 ```bash
 mkdir -p /tmp/picks-plan-c
 PYTHONPATH=src python scripts/generate_recommended_picks.py \
-  --budget 40 --seed 42 --strategy independent --output-dir /tmp/picks-plan-c
+  --budget 70 --seed 42 --strategy independent --output-dir /tmp/picks-plan-c
 cat /tmp/picks-plan-c/tickets.json | python -m json.tool | head -30
 ```
 Expected: valid JSON with `tickets` array, each with `variants` + `side_game_number`.
@@ -1001,17 +1014,17 @@ class TestEVSkipBoost(unittest.TestCase):
             # All jackpots zero → ratio 0 → skip
             subprocess.check_call([
                 sys.executable, "scripts/generate_recommended_picks.py",
-                "--budget", "40", "--seed", "42", "--output-dir", str(out),
+                "--budget", "70", "--seed", "42", "--output-dir", str(out),
                 "--ev-gate", "--ev-skip-ratio", "0.5",
                 "--joker-jackpot", "0",
                 "--loto649-jackpot", "0",
                 "--loto540-jackpot", "0",
                 "--ledger-path", str(out / "ledger.json"),
             ], env={"PYTHONPATH": "src", "PATH": ""})
-            # Expect: no tickets.json emitted, ledger has +40 credit
+            # Expect: no tickets.json emitted, ledger has +70 credit
             self.assertFalse((out / "tickets.json").exists())
             led = json.loads((out / "ledger.json").read_text())
-            self.assertEqual(led["balance"], 40.0)
+            self.assertEqual(led["balance"], 70.0)
 
     def test_boost_when_ratio_above_boost_ratio(self):
         import subprocess, sys, tempfile, json
@@ -1025,14 +1038,14 @@ class TestEVSkipBoost(unittest.TestCase):
             # Large jackpot that should push ratio > 1.2 (exact threshold depends on game)
             subprocess.check_call([
                 sys.executable, "scripts/generate_recommended_picks.py",
-                "--budget", "40", "--seed", "42", "--output-dir", str(out),
+                "--budget", "70", "--seed", "42", "--output-dir", str(out),
                 "--ev-gate", "--ev-boost-ratio", "1.2",
                 "--joker-jackpot", "50000000",
                 "--ledger-path", str(ledger_path),
             ], env={"PYTHONPATH": "src", "PATH": ""})
-            # Expect: tickets.json emitted with budget > 40
+            # Expect: tickets.json emitted with budget > 70 (boost adds to 70)
             doc = json.loads((out / "tickets.json").read_text())
-            self.assertGreater(doc["budget_ron"], 40.0)
+            self.assertGreater(doc["budget_ron"], 70.0)
             # Ledger debited
             led = json.loads(ledger_path.read_text())
             self.assertLess(led["balance"], 40.0)
@@ -1393,7 +1406,7 @@ PYTHONPATH=src python -m unittest -v 2>&1 | tail -15
 ```bash
 rm -rf /tmp/pc-e2e && mkdir -p /tmp/pc-e2e
 PYTHONPATH=src python scripts/generate_recommended_picks.py \
-  --budget 40 --seed 42 --strategy core_share --output-dir /tmp/pc-e2e
+  --budget 70 --seed 42 --strategy core_share --output-dir /tmp/pc-e2e
 PYTHONPATH=src PICKS_DIR=/tmp/pc-e2e RESULTS_DIR=/tmp/pc-e2e HISTORY_CSV=/tmp/pc-e2e/history.csv \
   python scripts/check_results.py
 cat /tmp/pc-e2e/tickets.json | python -m json.tool | head -40
@@ -1417,7 +1430,7 @@ gh pr create --fill --base main --title "Jackpot redesign C: orchestrator + EV g
 
 PR description must highlight:
 - Legacy `TICKET_COSTS` values removed; allocator now uses confirmed prices.
-- At 40 RON budget the allocator now chooses "1 Joker + 1 Loto 5/40 = 40 RON exact" by default. This is a visible change from previous runs. Flag in PR.
+- At the new default 70 RON budget the allocator fits 1 Joker + 1 Loto 6/49 + 1 Loto 5/40 = 68.5 RON (1.5 RON unspent). At the legacy 40 RON budget it picks 1 Joker + 1 Loto 5/40 = 40.0 exact. Both are visible changes from previous runs. Flag the default-budget change in the PR.
 - `tickets.json` is the new source of truth; `.txt` shim is kept for Plan D.
 - Schema changes are additive and tested idempotent.
 
