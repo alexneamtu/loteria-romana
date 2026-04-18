@@ -95,6 +95,21 @@ class _ResultsDB:
         values = [row[column] for column in columns]
         self.execute(sql, values)
 
+    def _add_column_if_missing(self, table: str, column_def: str) -> None:
+        """Idempotently add a column to an existing table.
+
+        column_def is the full definition (e.g. "ticket_id TEXT" or
+        "side_game_match INTEGER NOT NULL DEFAULT 0").
+        """
+        if self.kind == "postgres":
+            self.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column_def}")
+            return
+        try:
+            self.execute(f"ALTER TABLE {table} ADD COLUMN {column_def}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
+
     def ensure_schema(self) -> None:
         statements = [
             """
@@ -173,6 +188,41 @@ class _ResultsDB:
         ]
         for statement in statements:
             self.execute(statement)
+
+        self.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budget_ledger_entries (
+                id TEXT PRIMARY KEY,
+                draw_date TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                amount REAL NOT NULL,
+                balance_after REAL NOT NULL,
+                reason TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        self.execute(
+            "CREATE INDEX IF NOT EXISTS idx_budget_ledger_draw_date "
+            "ON budget_ledger_entries(draw_date)"
+        )
+
+        for column_def in (
+            "ticket_id TEXT",
+            "variant_no INTEGER NOT NULL DEFAULT 0",
+            "side_game_number TEXT",
+            "cost_ron REAL",
+            "builder_name TEXT",
+        ):
+            self._add_column_if_missing("generated_tickets", column_def)
+
+        for column_def in (
+            "ticket_id TEXT",
+            "side_game_match INTEGER NOT NULL DEFAULT 0",
+            "side_game_digits_matched INTEGER NOT NULL DEFAULT 0",
+            "winning_side_game TEXT",
+        ):
+            self._add_column_if_missing("check_results", column_def)
 
         # Backward-compatible fix for existing Postgres schemas where seed was INT4.
         if self.kind == "postgres":
