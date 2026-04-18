@@ -24,6 +24,7 @@ from typing import Protocol
 from .ensemble_blend import generate_blended_picks
 from .game_config import GameConfig
 from .joker_set_optimizer import assign_max_coverage_jokers
+from .math_utils import softmax
 from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
 from .side_games import generate_noroc, generate_noroc_plus, generate_super_noroc
 from .ticket import Ticket, Variant
@@ -113,3 +114,78 @@ class IndependentBuilder:
             variants = _make_variants(ctx, slice_)
             tickets.append(_make_ticket(ctx, variants, self.strategy))
         return tickets
+
+
+_CORE_K = {"joker": 3, "loto_649": 4, "loto_540": 3}
+_PETAL_M = {"joker": 6, "loto_649": 5, "loto_540": 6}
+
+
+def _top_k_from_signal(
+    ctx: BuilderContext,
+    k: int,
+    exclude: set[int] | None = None,
+) -> list[int]:
+    """Return top-k numbers ranked by per-number frequency softmax.
+
+    Uses a simple recent-frequency softmax over the last 200 draws.
+    """
+    exclude = exclude or set()
+    recent = ctx.draws[-200:] if len(ctx.draws) > 200 else ctx.draws
+    counts: dict[int, float] = {n: 0.0 for n in ctx.config.pool_range}
+    for draw in recent:
+        for n in draw:
+            if n in counts:
+                counts[n] += 1.0
+
+    nums = [n for n in ctx.config.pool_range if n not in exclude]
+    weights = [counts[n] for n in nums]
+    probs = softmax(weights)
+
+    ranked = sorted(zip(nums, probs), key=lambda p: p[1], reverse=True)
+    return [n for n, _ in ranked[:k]]
+
+
+class CoreShareBuilder:
+    """All variants share a top-K core; petals rotate through pool of M."""
+
+    strategy = "core_share"
+
+    def build(self, ctx: BuilderContext) -> list[Ticket]:
+        core_k = _CORE_K[ctx.game]
+        petal_m = _PETAL_M[ctx.game]
+        variants_per = VARIANTS_PER_TICKET[ctx.game]
+        per_variant = ctx.config.numbers_to_pick
+        if core_k >= per_variant:
+            raise ValueError(f"core K={core_k} must be < numbers_to_pick={per_variant}")
+
+        core = _top_k_from_signal(ctx, core_k)
+        petal_pool = _top_k_from_signal(ctx, core_k + petal_m, exclude=set(core))[core_k:]
+        if not petal_pool:
+            petal_pool = _top_k_from_signal(ctx, petal_m, exclude=set(core))
+
+        slots_per_variant = per_variant - core_k
+
+        variants_picks: list[list[int]] = []
+        seen: set[tuple[int, ...]] = set()
+        attempts = 0
+        while len(variants_picks) < variants_per and attempts < variants_per * 20:
+            attempts += 1
+            petals = ctx.rng.sample(petal_pool, k=min(slots_per_variant, len(petal_pool)))
+            if len(petals) < slots_per_variant:
+                extra_pool = [
+                    n for n in ctx.config.pool_range
+                    if n not in core and n not in petals
+                ]
+                petals.extend(ctx.rng.sample(extra_pool, slots_per_variant - len(petals)))
+            full = tuple(sorted(core + petals))
+            if full in seen:
+                continue
+            seen.add(full)
+            variants_picks.append(list(full))
+
+        while len(variants_picks) < variants_per:
+            extras = ctx.rng.sample(list(ctx.config.pool_range), per_variant)
+            variants_picks.append(sorted(set(extras))[:per_variant])
+
+        variants = _make_variants(ctx, variants_picks)
+        return [_make_ticket(ctx, variants, self.strategy)]
