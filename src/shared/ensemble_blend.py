@@ -44,6 +44,15 @@ try:
 except ImportError:
     _TORCH_AVAILABLE = False
 
+# Opt-out for environments where torch models add unreliable runtime (e.g. the
+# scheduled generate-picks workflow). Backtests showed no measurable edge from
+# LSTM/TCN/Transformer/NormalizingFlow/RL over the non-torch strategies, and
+# their training cost dominates overall runtime.
+import os as _os
+
+if _os.environ.get("DISABLE_TORCH_STRATEGIES") == "1":
+    _TORCH_AVAILABLE = False
+
 
 def _score_random(
     config: GameConfig,
