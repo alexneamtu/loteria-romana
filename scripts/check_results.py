@@ -31,6 +31,11 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+def is_side_game_ready(draw, attr: str) -> bool:
+    """Return True if the draw has a non-None value for the given side-game attribute."""
+    return getattr(draw, attr, None) is not None
+
+
 def parse_tickets_json(path: Path) -> list:
     """Load tickets.json and return list of Ticket objects."""
     from shared.ticket_io import load_tickets
@@ -313,6 +318,23 @@ def fetch_results_with_retry(max_retries: int = 3, delay_minutes: int = 1):
         loto540_ok = bool(loto540_draws) and str(loto540_draws[-1].date) >= yesterday
 
         if joker_ok or loto_ok or loto540_ok:
+            # Log-only informational check; never blocks the workflow.
+            missing_side = []
+            if joker_draws and not is_side_game_ready(joker_draws[-1], "noroc_plus"):
+                missing_side.append("joker/noroc_plus")
+            if loto_draws and not is_side_game_ready(loto_draws[-1], "noroc"):
+                missing_side.append("loto_649/noroc")
+            if loto540_draws and not is_side_game_ready(loto540_draws[-1], "super_noroc"):
+                missing_side.append("loto_540/super_noroc")
+
+            if missing_side and attempt < max_retries - 1:
+                log(f"Side games not yet published: {missing_side}. Waiting {delay_minutes} more minute(s)...")
+                time.sleep(delay_minutes * 60)
+                continue
+
+            if missing_side:
+                log(f"WARNING: side games still missing after retries: {missing_side}. Proceeding with None values.")
+
             log("\n=== Recent results found! ===")
             return joker_draws, loto_draws, loto540_draws
 

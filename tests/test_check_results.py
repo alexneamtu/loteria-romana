@@ -210,3 +210,19 @@ class TestCheckResultsWritesJSONL(unittest.TestCase):
             text = jsonl.read_text().strip()
             self.assertIn("tkt-1", text)
             self.assertIn("core_share", text)
+
+
+class TestSideGameRetry(unittest.TestCase):
+    def test_is_side_game_ready(self):
+        from scripts.check_results import is_side_game_ready
+
+        class FakeDraw:
+            def __init__(self, noroc_plus=None, noroc=None, super_noroc=None):
+                self.noroc_plus = noroc_plus
+                self.noroc = noroc
+                self.super_noroc = super_noroc
+
+        self.assertTrue(is_side_game_ready(FakeDraw(noroc_plus="NP07"), attr="noroc_plus"))
+        self.assertFalse(is_side_game_ready(FakeDraw(noroc_plus=None), attr="noroc_plus"))
+        self.assertTrue(is_side_game_ready(FakeDraw(noroc="1234567"), attr="noroc"))
+        self.assertFalse(is_side_game_ready(FakeDraw(), attr="super_noroc"))
