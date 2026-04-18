@@ -11,29 +11,34 @@ def _normalize_date(date_str: str) -> str:
 def parse_loto_540_results(html: str) -> list[Loto540Draw]:
     """Parse Loto 5/40 results from HTML.
 
-    The game draws 6 numbers from 1-40.
+    The game draws 6 numbers from 1-40. Super Noroc is 6 single-digit
+    images in /bile/super-noroc/ when present.
     """
     draws = []
-
-    # Pattern for main 5/40 draw dates
     date_pattern = re.compile(
         r"Detalii castiguri\s+la 5/40\s+din\s+<span>(\d{2}\.\d{2}\.\d{4})</span>"
     )
 
-    # Parse main draws
     for match in date_pattern.finditer(html):
         window_start = max(0, match.start() - 2000)
         window = html[window_start:match.start()]
 
-        # Extract ball numbers from images
+        # Find the nearest opening div tag to avoid mixing draws
+        last_div = window.rfind("<div")
+        if last_div != -1:
+            window = window[last_div:]
+
         main_nums = [int(n) for n in re.findall(r"/bile/(\d{1,2})\.png", window)]
+        super_noroc_digits = re.findall(r"/bile/super-noroc/(\d)\.png", window)
 
         if len(main_nums) < 6:
             continue
 
         date = _normalize_date(match.group(1))
-        main = sorted(main_nums[-6:])  # Take last 6 numbers found
-
-        draws.append(Loto540Draw(date, main))
+        main = sorted(main_nums[-6:])
+        super_noroc = (
+            "".join(super_noroc_digits) if len(super_noroc_digits) == 6 else None
+        )
+        draws.append(Loto540Draw(date, main, super_noroc))
 
     return sorted(draws, key=lambda d: d.date)
