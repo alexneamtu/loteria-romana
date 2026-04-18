@@ -74,7 +74,7 @@ class EVCalculator:
     # Note: These should be updated periodically as rules change
 
     @staticmethod
-    def create_loto_649(ticket_cost: float = 6.0) -> LotteryGame:
+    def create_loto_649(ticket_cost: float | None = None) -> LotteryGame:
         """
         Create Loto 6/49 game configuration.
 
@@ -83,7 +83,14 @@ class EVCalculator:
         - Category II: 5 matches (pari-mutuel)
         - Category III: 4 matches (fixed)
         - Category IV: 3 matches (fixed)
+
+        The default ticket_cost excludes the Noroc side-game stake: EV
+        tiers model main-game prizes only; side games have separate
+        prize ladders and are not in scope here.
         """
+        if ticket_cost is None:
+            from .pricing import compute_ticket_cost
+            ticket_cost = compute_ticket_cost("loto_649", include_side_game=False)
         game = LotteryGame(
             name="Loto 6/49",
             pool_size=49,
@@ -124,13 +131,20 @@ class EVCalculator:
         return game
 
     @staticmethod
-    def create_loto_540(ticket_cost: float = 4.0) -> LotteryGame:
+    def create_loto_540(ticket_cost: float | None = None) -> LotteryGame:
         """
         Create Loto 5/40 game configuration.
 
         Special rule: 6 numbers are drawn, player picks 5.
         Prize structure based on matches out of 6 drawn.
+
+        The default ticket_cost excludes the Super Noroc side-game stake: EV
+        tiers model main-game prizes only; side games have separate
+        prize ladders and are not in scope here.
         """
+        if ticket_cost is None:
+            from .pricing import compute_ticket_cost
+            ticket_cost = compute_ticket_cost("loto_540", include_side_game=False)
         game = LotteryGame(
             name="Loto 5/40",
             pool_size=40,
@@ -170,12 +184,19 @@ class EVCalculator:
         return game
 
     @staticmethod
-    def create_joker(ticket_cost: float = 8.0) -> LotteryGame:
+    def create_joker(ticket_cost: float | None = None) -> LotteryGame:
         """
         Create Joker game configuration.
 
         Structure: 5 main numbers from 1-45, plus 1 Joker from 1-20.
+
+        The default ticket_cost excludes the Noroc Plus side-game stake: EV
+        tiers model main-game prizes only; side games have separate
+        prize ladders and are not in scope here.
         """
+        if ticket_cost is None:
+            from .pricing import compute_ticket_cost
+            ticket_cost = compute_ticket_cost("joker", include_side_game=False)
         game = LotteryGame(
             name="Joker",
             pool_size=45,

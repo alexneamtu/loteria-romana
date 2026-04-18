@@ -4,36 +4,40 @@ Recommends the best combination of Joker, Loto 6/49, and Loto 5/40 tickets
 to maximize the probability of winning any prize.
 
 Usage:
-    PYTHONPATH=src python scripts/generate_recommended_picks.py --budget 24
+    PYTHONPATH=src python scripts/generate_recommended_picks.py --budget 70
     PYTHONPATH=src python scripts/generate_recommended_picks.py --budget 100 --verbose
     PYTHONPATH=src python scripts/generate_recommended_picks.py --budget 100 --seed 42
+    PYTHONPATH=src python scripts/generate_recommended_picks.py --budget 70 --strategy core_share
 """
 
 import argparse
 import os
 import random
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
-from shared.game_recommender import (
-    BudgetAllocation,
-    TICKET_COSTS,
-    calculate_win_probability,
-    format_recommendation,
-    optimize_budget,
-    top_diverse_allocations,
+from shared.ticket_allocator import TicketAllocation, best_allocation, enumerate_allocations
+from shared.ticket_builders import (
+    BuilderContext,
+    CoreShareBuilder,
+    IndependentBuilder,
+    WheelBuilder,
 )
+from shared.ticket_io import dump_tickets
 from shared.game_config import JOKER_CONFIG, LOTO_540_CONFIG, LOTO_649_CONFIG
 from shared.ev_calculator import EVCalculator
-from shared.ensemble_blend import generate_blended_picks
-from shared.joker_set_optimizer import (
-    assign_max_coverage_jokers,
-    optimize_main_ticket_set,
-)
+from shared.pricing import compute_ticket_cost
 from shared.recency import resolve_recency_settings
 from shared.results_db import persist_generation_run
+from shared.budget_ledger import BudgetLedger
 
 
-JOKER_SECONDARY_POOL = 20
+DISPLAY_NAMES = {
+    "joker": "Joker",
+    "loto_649": "Loto 6/49",
+    "loto_540": "Loto 5/40",
+}
 
 
 def build_parser():
@@ -64,7 +68,7 @@ def build_parser():
     )
     parser.add_argument(
         "--output-dir", type=str,
-        help="Save picks to files in this directory (joker.txt, loto649.txt, loto540.txt)",
+        help="Save picks to files in this directory (tickets.json, joker.txt, etc.)",
     )
     parser.add_argument(
         "--ev-gate", action="store_true",
@@ -85,6 +89,25 @@ def build_parser():
     parser.add_argument(
         "--loto540-jackpot", type=float,
         help="Current Loto 5/40 jackpot in RON (required for 5/40 EV gating)",
+    )
+    parser.add_argument(
+        "--strategy", default="independent",
+        help=(
+            "Ticket build strategy: 'independent', 'core_share', "
+            "or 'wheel:<pool_size>' (default: independent)"
+        ),
+    )
+    parser.add_argument(
+        "--ev-skip-ratio", type=float, default=0.5,
+        help="Skip draw if all games' jackpot/breakeven ratio < this",
+    )
+    parser.add_argument(
+        "--ev-boost-ratio", type=float, default=1.2,
+        help="Boost budget from ledger if any game's ratio > this",
+    )
+    parser.add_argument(
+        "--ledger-path", type=str, default="picks/budget_bank.json",
+        help="Path to budget ledger JSON file",
     )
     return parser
 
@@ -111,35 +134,6 @@ def load_loto_649_draws():
     return load_draws(csv_path)
 
 
-def generate_joker_picks(draws, count, rng, half_life, half_life_mode):
-    draw_main_only = [d.main_numbers for d in draws]
-    draw_dates = [d.date for d in draws]
-
-    main_picks = generate_blended_picks(
-        JOKER_CONFIG,
-        draw_main_only,
-        count,
-        rng,
-        half_life=half_life,
-        half_life_mode=half_life_mode,
-        draw_dates=draw_dates,
-    )
-    optimized_main = optimize_main_ticket_set(
-        candidates=main_picks,
-        select_count=count,
-        pool_size=JOKER_CONFIG.pool_size,
-        numbers_to_pick=JOKER_CONFIG.numbers_to_pick,
-        rng=rng,
-        anti_crowding_weight=0.35,
-    )
-    jokers = assign_max_coverage_jokers(
-        count=len(optimized_main),
-        rng=rng,
-        joker_pool=JOKER_SECONDARY_POOL,
-    )
-    return list(zip(optimized_main, jokers))
-
-
 def load_loto_540_draws():
     from loto_540_model.fetch import update_dataset
     from loto_540_model.storage import load_draws
@@ -151,105 +145,137 @@ def load_loto_540_draws():
     return load_draws(csv_path)
 
 
-def generate_540_picks(draws, count, rng, half_life, half_life_mode):
-    draw_main_only = [d.main_numbers for d in draws]
-    draw_dates = [d.date for d in draws]
+def _builder_for_spec(spec: str):
+    if spec == "independent":
+        return IndependentBuilder(n_tickets=1)
+    if spec == "core_share":
+        return CoreShareBuilder()
+    if spec.startswith("wheel:"):
+        return WheelBuilder(pool_size=int(spec.split(":", 1)[1]))
+    raise SystemExit(f"unknown strategy: {spec}")
 
-    main_picks = generate_blended_picks(
-        LOTO_540_CONFIG,
-        draw_main_only,
-        count,
-        rng,
-        half_life=half_life,
-        half_life_mode=half_life_mode,
-        draw_dates=draw_dates,
+
+_GAME_LOADERS = {
+    "joker": load_joker_draws,
+    "loto_649": load_loto_649_draws,
+    "loto_540": load_loto_540_draws,
+}
+
+_GAME_CONFIGS = {
+    "joker": JOKER_CONFIG,
+    "loto_649": LOTO_649_CONFIG,
+    "loto_540": LOTO_540_CONFIG,
+}
+
+
+def _build_tickets_for_allocation(allocation, rng, half_life, half_life_mode, strategy_spec):
+    """Build Ticket objects for every game slot in the allocation."""
+    from shared.ticket import Ticket
+    tickets: list[Ticket] = []
+    for game, n in allocation.tickets.items():
+        if n <= 0:
+            continue
+        draws_list = _GAME_LOADERS[game]()
+        draws_main = [d.main_numbers for d in draws_list]
+        draw_dates = [d.date for d in draws_list]
+        for _ in range(n):
+            ctx = BuilderContext(
+                game=game,
+                config=_GAME_CONFIGS[game],
+                draws=draws_main,
+                draw_dates=draw_dates,
+                rng=rng,
+            )
+            tickets.extend(_builder_for_spec(strategy_spec).build(ctx))
+    return tickets
+
+
+def _tickets_to_db_rows(tickets, suffix="") -> list[dict]:
+    """Flatten tickets to per-variant dicts matching the legacy DB schema."""
+    rows: list[dict] = []
+    strategy_label = f"recommended{suffix}"
+    game_idx: dict[str, int] = {}
+    for ticket in tickets:
+        game = ticket.game
+        for variant in ticket.variants:
+            idx = game_idx.get(game, 0) + 1
+            game_idx[game] = idx
+            rows.append(
+                {
+                    "game": game,
+                    "strategy": strategy_label,
+                    "line_no": idx,
+                    "main_numbers": list(variant.main_numbers),
+                    "joker_number": variant.bonus_number,
+                }
+            )
+    return rows
+
+
+def _format_allocation(allocation: TicketAllocation, budget: float) -> str:
+    lines = [
+        f"Budget: {budget:.0f} RON",
+        f"P(any win): {allocation.p_any_win * 100:.2f}%",
+        "",
+        "Allocation:",
+    ]
+    for game, count in allocation.tickets.items():
+        if count > 0:
+            cost = compute_ticket_cost(game) * count
+            lines.append(
+                f"  {DISPLAY_NAMES[game]}: {count} ticket(s) ({cost:.1f} RON)"
+            )
+    unused = budget - allocation.total_cost
+    if unused > 0.01:
+        lines.append(f"  Unspent: {unused:.1f} RON")
+    return "\n".join(lines)
+
+
+def _write_outputs(output_dir, tickets, allocation, budget_ron, suffix=""):
+    generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    total_cost = sum(t.cost_ron for t in tickets)
+    dump_tickets(
+        output_dir / f"tickets{suffix}.json",
+        tickets=tickets,
+        budget_ron=budget_ron,
+        total_cost_ron=round(total_cost, 2),
+        allocation=dict(allocation.tickets),
+        generated_at=generated_at,
     )
-    return main_picks
-
-
-def generate_649_picks(draws, count, rng, half_life, half_life_mode):
-    draw_main_only = [d.main_numbers for d in draws]
-    draw_dates = [d.date for d in draws]
-
-    main_picks = generate_blended_picks(
-        LOTO_649_CONFIG,
-        draw_main_only,
-        count,
-        rng,
-        half_life=half_life,
-        half_life_mode=half_life_mode,
-        draw_dates=draw_dates,
-    )
-    return main_picks
-
-
-def _optimize_budget_with_allowed_games(
-    budget_ron: float,
-    allowed_games: set[str],
-) -> BudgetAllocation:
-    if budget_ron < min(TICKET_COSTS.values()):
-        return BudgetAllocation(budget=budget_ron)
-
-    probabilities = {
-        game: calculate_win_probability(game).win_rate
-        for game in TICKET_COSTS
-    }
-    budget = int(budget_ron)
-    best = BudgetAllocation(budget=budget_ron)
-
-    joker_range = range(budget // 8 + 1) if "joker" in allowed_games else [0]
-    loto649_range_template = range(budget // 6 + 1) if "loto_649" in allowed_games else [0]
-    loto540_allowed = "loto_540" in allowed_games
-
-    for n_joker in joker_range:
-        remaining_after_joker = budget - n_joker * 8
-        loto649_range = loto649_range_template if "loto_649" in allowed_games else [0]
-        for n_649 in loto649_range:
-            cost_649 = n_649 * 6
-            if cost_649 > remaining_after_joker:
-                continue
-            remaining = remaining_after_joker - cost_649
-            n_540 = remaining // 4 if loto540_allowed else 0
-
-            tickets = {"joker": n_joker, "loto_649": n_649, "loto_540": n_540}
-            total_tickets = sum(tickets.values())
-            if total_tickets == 0:
-                continue
-
-            p_no_win = 1.0
-            for game, count in tickets.items():
-                if count <= 0:
-                    continue
-                p_no_win *= (1 - probabilities[game]) ** count
-            p_any = 1 - p_no_win
-            cost = n_joker * 8 + n_649 * 6 + n_540 * 4
-
-            if p_any > best.p_any_win:
-                best = BudgetAllocation(
-                    tickets=tickets,
-                    total_cost=float(cost),
-                    p_any_win=p_any,
-                    budget=budget_ron,
-                )
-
-    return best
+    # Legacy .txt shim — Plan D deletes this.
+    for game, label in (("joker", "joker"), ("loto_649", "loto649"), ("loto_540", "loto540")):
+        game_tickets = [t for t in tickets if t.game == game]
+        if not game_tickets:
+            continue
+        lines: list[str] = []
+        idx = 1
+        for t in game_tickets:
+            for v in t.variants:
+                main = ", ".join(str(n) for n in v.main_numbers)
+                if game == "joker":
+                    lines.append(f"{idx}. {main} + J{v.bonus_number}")
+                else:
+                    lines.append(f"{idx}. {main}")
+                idx += 1
+        (output_dir / f"{label}{suffix}.txt").write_text("\n".join(lines) + "\n")
 
 
 def apply_ev_gate(
-    allocation: BudgetAllocation,
+    allocation: TicketAllocation,
     enabled: bool,
     min_ratio: float,
     jackpots: dict[str, float],
-) -> tuple[BudgetAllocation, dict[str, dict[str, float | bool]]]:
+) -> tuple[TicketAllocation, dict[str, dict[str, float | bool]]]:
     """Filter allocation by jackpot/breakeven ratio when gate is enabled."""
     if not enabled:
         return allocation, {}
 
+    from shared.pricing import compute_ticket_cost as _cost
     calc = EVCalculator()
     games = {
-        "joker": calc.create_joker(ticket_cost=TICKET_COSTS["joker"]),
-        "loto_649": calc.create_loto_649(ticket_cost=TICKET_COSTS["loto_649"]),
-        "loto_540": calc.create_loto_540(ticket_cost=TICKET_COSTS["loto_540"]),
+        "joker": calc.create_joker(ticket_cost=_cost("joker")),
+        "loto_649": calc.create_loto_649(ticket_cost=_cost("loto_649")),
+        "loto_540": calc.create_loto_540(ticket_cost=_cost("loto_540")),
     }
 
     details: dict[str, dict[str, float | bool]] = {}
@@ -272,109 +298,77 @@ def apply_ev_gate(
         }
 
     if not allowed_games:
-        filtered = BudgetAllocation(
+        filtered = TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
             total_cost=0.0,
             p_any_win=0.0,
-            budget=allocation.budget,
         )
         return filtered, details
 
-    filtered = _optimize_budget_with_allowed_games(
-        budget_ron=allocation.budget,
-        allowed_games=allowed_games,
+    # Re-optimise using the original allocation's total cost as the budget cap.
+    budget_cap = allocation.total_cost or sum(
+        compute_ticket_cost(g) * c for g, c in allocation.tickets.items() if c > 0
     )
+    filtered = best_allocation(budget_ron=budget_cap, allowed_games=allowed_games)
     return filtered, details
 
 
-DISPLAY_NAMES = {
-    "joker": "Joker",
-    "loto_649": "Loto 6/49",
-    "loto_540": "Loto 5/40",
-}
+@dataclass
+class EVDecision:
+    action: str  # "play" | "skip" | "boost"
+    reason: str
+    extra_budget: float = 0.0
 
 
-def _generate_picks_for_allocation(
-    allocation, rng, half_life, half_life_mode, output_dir, mix_label,
-):
-    """Generate actual number picks for one allocation and write output files.
+def apply_ev_gate_v2(
+    budget: float,
+    jackpots: dict[str, float | None],
+    skip_ratio: float,
+    boost_ratio: float,
+) -> EVDecision:
+    """Compute per-game jackpot/breakeven ratios and decide skip/boost/play."""
+    from shared.pricing import compute_ticket_cost as _cost
+    calc = EVCalculator()
+    games = {
+        "joker": calc.create_joker(ticket_cost=_cost("joker")),
+        "loto_649": calc.create_loto_649(ticket_cost=_cost("loto_649")),
+        "loto_540": calc.create_loto_540(ticket_cost=_cost("loto_540")),
+    }
+    ratios: dict[str, float] = {}
+    for game_name, game in games.items():
+        jackpot = jackpots.get(game_name)
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        if jackpot is None or breakeven is None or breakeven <= 0:
+            ratios[game_name] = 0.0
+        else:
+            ratios[game_name] = jackpot / breakeven
 
-    Returns list of generated ticket dicts for DB persistence.
-    """
-    generated_tickets: list[dict[str, object]] = []
-    suffix = f"_{mix_label}" if mix_label else ""
+    max_ratio = max(ratios.values())
 
-    n_joker = allocation.tickets.get("joker", 0)
-    n_649 = allocation.tickets.get("loto_649", 0)
-    n_540 = allocation.tickets.get("loto_540", 0)
+    if max_ratio < skip_ratio:
+        return EVDecision(action="skip", reason=f"all ratios < {skip_ratio}")
+    if max_ratio > boost_ratio:
+        return EVDecision(
+            action="boost",
+            reason=f"max ratio {max_ratio:.2f} > {boost_ratio}",
+            extra_budget=budget,
+        )
+    return EVDecision(action="play", reason=f"ratios OK (max {max_ratio:.2f})")
 
-    if n_joker > 0:
-        print()
-        print(f"--- Joker ({n_joker} tickets) ---")
-        draws = load_joker_draws()
-        lines = generate_joker_picks(draws, n_joker, rng, half_life, half_life_mode)
-        joker_lines = []
-        for idx, (main, joker) in enumerate(lines, 1):
-            line = f"{idx}. {', '.join(str(n) for n in main)} + J{joker}"
-            print(line)
-            joker_lines.append(line)
-            generated_tickets.append(
-                {
-                    "game": "joker",
-                    "strategy": f"recommended{suffix}",
-                    "line_no": idx,
-                    "main_numbers": main,
-                    "joker_number": joker,
-                }
-            )
-        if output_dir:
-            (output_dir / f"joker{suffix}.txt").write_text("\n".join(joker_lines) + "\n")
 
-    if n_649 > 0:
-        print()
-        print(f"--- Loto 6/49 ({n_649} tickets) ---")
-        draws = load_loto_649_draws()
-        lines = generate_649_picks(draws, n_649, rng, half_life, half_life_mode)
-        loto_lines = []
-        for idx, main in enumerate(lines, 1):
-            line = f"{idx}. {', '.join(str(n) for n in main)}"
-            print(line)
-            loto_lines.append(line)
-            generated_tickets.append(
-                {
-                    "game": "loto_649",
-                    "strategy": f"recommended{suffix}",
-                    "line_no": idx,
-                    "main_numbers": main,
-                    "joker_number": None,
-                }
-            )
-        if output_dir:
-            (output_dir / f"loto649{suffix}.txt").write_text("\n".join(loto_lines) + "\n")
-
-    if n_540 > 0:
-        print()
-        print(f"--- Loto 5/40 ({n_540} tickets) ---")
-        draws = load_loto_540_draws()
-        lines = generate_540_picks(draws, n_540, rng, half_life, half_life_mode)
-        loto540_lines = []
-        for idx, main in enumerate(lines, 1):
-            line = f"{idx}. {', '.join(str(n) for n in main)}"
-            print(line)
-            loto540_lines.append(line)
-            generated_tickets.append(
-                {
-                    "game": "loto_540",
-                    "strategy": f"recommended{suffix}",
-                    "line_no": idx,
-                    "main_numbers": main,
-                    "joker_number": None,
-                }
-            )
-        if output_dir:
-            (output_dir / f"loto540{suffix}.txt").write_text("\n".join(loto540_lines) + "\n")
-
-    return generated_tickets
+def _top_n_diverse_allocations(budget_ron: float, n: int) -> list[TicketAllocation]:
+    """Top N allocations with diverse active-game mixes, ranked by p_any_win."""
+    all_allocs = enumerate_allocations(budget_ron=budget_ron)
+    by_mix: dict[frozenset[str], TicketAllocation] = {}
+    for alloc in all_allocs:
+        active = frozenset(g for g, c in alloc.tickets.items() if c > 0)
+        if not active:
+            continue
+        prev = by_mix.get(active)
+        if prev is None or alloc.p_any_win > prev.p_any_win:
+            by_mix[active] = alloc
+    ranked = sorted(by_mix.values(), key=lambda a: a.p_any_win, reverse=True)
+    return ranked[:n]
 
 
 def main():
@@ -399,23 +393,42 @@ def main():
         "loto_540": args.loto540_jackpot,
     }
 
-    if args.verbose:
-        print("Per-game analysis:")
-        for game in ["joker", "loto_649", "loto_540"]:
-            gp = calculate_win_probability(game)
-            print(
-                f"  {game}: {gp.win_rate * 100:.4f}% win rate, "
-                f"{gp.ticket_cost:.0f} RON, "
-                f"{gp.win_rate_per_ron * 100:.4f}%/RON"
-            )
-        print()
-
     output_dir = Path(args.output_dir) if args.output_dir else None
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    effective_budget = args.budget
+    if args.ev_gate:
+        ledger_path = Path(args.ledger_path)
+        ledger = BudgetLedger(ledger_path)
+        decision = apply_ev_gate_v2(
+            budget=args.budget,
+            jackpots=jackpots,
+            skip_ratio=args.ev_skip_ratio,
+            boost_ratio=args.ev_boost_ratio,
+        )
+        draw_date = datetime.now(UTC).date().isoformat()
+        if decision.action == "skip":
+            ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=decision.reason)
+            print(f"EV gate: SKIP — {decision.reason}. Ledger balance: {ledger.balance():.2f} RON")
+            persist_generation_run(
+                budget=args.budget,
+                seed=args.seed,
+                ev_gate=True,
+                ev_min_ratio=args.ev_skip_ratio,
+                jackpots=jackpots,
+                allocation={"tickets": {}, "total_cost": 0.0, "p_any_win": 0.0, "budget": args.budget},
+                gate_details={"action": "skip", "reason": decision.reason},
+                tickets=[],
+            )
+            return
+        if decision.action == "boost":
+            actual = ledger.debit_boost(draw_date=draw_date, amount=decision.extra_budget, reason=decision.reason)
+            effective_budget = args.budget + actual
+            print(f"EV gate: BOOST +{actual:.2f} → effective {effective_budget:.2f} RON")
+
     if args.mixes > 1:
-        allocations = top_diverse_allocations(args.budget, args.mixes)
+        allocations = _top_n_diverse_allocations(effective_budget, args.mixes)
         if args.ev_gate:
             filtered = []
             for alloc in allocations:
@@ -429,7 +442,7 @@ def main():
                     filtered.append(alloc)
             allocations = filtered
 
-        all_tickets: list[dict[str, object]] = []
+        all_db_rows: list[dict] = []
         for i, alloc in enumerate(allocations, 1):
             games_in_mix = [
                 DISPLAY_NAMES[g]
@@ -439,34 +452,30 @@ def main():
             print(f"\n{'=' * 50}")
             print(f"MIX {i}: {' + '.join(games_in_mix)}")
             print(f"{'=' * 50}")
-            print(format_recommendation(alloc))
-            tickets = _generate_picks_for_allocation(
-                alloc, rng, half_life, half_life_mode, output_dir, f"mix{i}",
+            print(_format_allocation(alloc, effective_budget))
+
+            tickets = _build_tickets_for_allocation(
+                alloc, rng, half_life, half_life_mode, args.strategy,
             )
-            all_tickets.extend(tickets)
 
-        # Write a summary file for Telegram
-        if output_dir:
-            summary_lines = []
-            for i, alloc in enumerate(allocations, 1):
-                games_in_mix = [
-                    DISPLAY_NAMES[g]
-                    for g in ["joker", "loto_649", "loto_540"]
-                    if alloc.tickets.get(g, 0) > 0
-                ]
-                summary_lines.append(f"Mix {i}: {' + '.join(games_in_mix)}")
-                for g in ["joker", "loto_649", "loto_540"]:
-                    n = alloc.tickets.get(g, 0)
-                    if n > 0:
-                        summary_lines.append(f"  {DISPLAY_NAMES[g]}: {n} ticket(s)")
-                summary_lines.append(f"  P(any win): {alloc.p_any_win * 100:.2f}%")
-                summary_lines.append(f"  Cost: {alloc.total_cost:.0f} RON")
-                summary_lines.append("")
-            (output_dir / "mixes_summary.txt").write_text("\n".join(summary_lines))
+            _print_tickets(tickets)
 
-        best_alloc = allocations[0] if allocations else BudgetAllocation(budget=args.budget)
+            suffix = f"_mix{i}"
+            if output_dir:
+                _write_outputs(output_dir, tickets, alloc, effective_budget, suffix=suffix)
+
+            all_db_rows.extend(_tickets_to_db_rows(tickets, suffix=suffix))
+
+        if output_dir and allocations:
+            _write_mixes_summary(output_dir, allocations)
+
+        best_alloc = allocations[0] if allocations else TicketAllocation(
+            tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
+            total_cost=0.0,
+            p_any_win=0.0,
+        )
         persist_generation_run(
-            budget=args.budget,
+            budget=effective_budget,
             seed=args.seed,
             ev_gate=args.ev_gate,
             ev_min_ratio=args.ev_min_ratio,
@@ -475,21 +484,21 @@ def main():
                 "tickets": best_alloc.tickets,
                 "total_cost": best_alloc.total_cost,
                 "p_any_win": best_alloc.p_any_win,
-                "budget": best_alloc.budget,
+                "budget": effective_budget,
                 "mixes": len(allocations),
             },
             gate_details={},
-            tickets=all_tickets,
+            tickets=all_db_rows,
         )
     else:
-        allocation = optimize_budget(args.budget)
+        allocation = best_allocation(budget_ron=effective_budget)
         allocation, gate_details = apply_ev_gate(
             allocation=allocation,
             enabled=args.ev_gate,
             min_ratio=args.ev_min_ratio,
             jackpots=jackpots,
         )
-        print(format_recommendation(allocation))
+        print(_format_allocation(allocation, effective_budget))
 
         if args.verbose and args.ev_gate:
             print()
@@ -506,7 +515,7 @@ def main():
 
         if allocation.p_any_win == 0:
             persist_generation_run(
-                budget=args.budget,
+                budget=effective_budget,
                 seed=args.seed,
                 ev_gate=args.ev_gate,
                 ev_min_ratio=args.ev_min_ratio,
@@ -515,19 +524,25 @@ def main():
                     "tickets": allocation.tickets,
                     "total_cost": allocation.total_cost,
                     "p_any_win": allocation.p_any_win,
-                    "budget": allocation.budget,
+                    "budget": effective_budget,
                 },
                 gate_details=gate_details,
                 tickets=[],
             )
             return
 
-        generated_tickets = _generate_picks_for_allocation(
-            allocation, rng, half_life, half_life_mode, output_dir, "",
+        tickets = _build_tickets_for_allocation(
+            allocation, rng, half_life, half_life_mode, args.strategy,
         )
 
+        _print_tickets(tickets)
+
+        if output_dir:
+            _write_outputs(output_dir, tickets, allocation, effective_budget)
+
+        db_rows = _tickets_to_db_rows(tickets)
         persist_generation_run(
-            budget=args.budget,
+            budget=effective_budget,
             seed=args.seed,
             ev_gate=args.ev_gate,
             ev_min_ratio=args.ev_min_ratio,
@@ -536,11 +551,53 @@ def main():
                 "tickets": allocation.tickets,
                 "total_cost": allocation.total_cost,
                 "p_any_win": allocation.p_any_win,
-                "budget": allocation.budget,
+                "budget": effective_budget,
             },
             gate_details=gate_details,
-            tickets=generated_tickets,
+            tickets=db_rows,
         )
+
+
+def _print_tickets(tickets) -> None:
+    from shared.pricing import VARIANTS_PER_TICKET
+    by_game: dict[str, list] = {}
+    for t in tickets:
+        by_game.setdefault(t.game, []).append(t)
+
+    for game in ["joker", "loto_649", "loto_540"]:
+        game_tickets = by_game.get(game, [])
+        if not game_tickets:
+            continue
+        print()
+        print(f"--- {DISPLAY_NAMES[game]} ({len(game_tickets)} ticket(s)) ---")
+        idx = 1
+        for t in game_tickets:
+            for v in t.variants:
+                main = ", ".join(str(n) for n in v.main_numbers)
+                if game == "joker":
+                    print(f"{idx}. {main} + J{v.bonus_number}")
+                else:
+                    print(f"{idx}. {main}")
+                idx += 1
+
+
+def _write_mixes_summary(output_dir: Path, allocations: list[TicketAllocation]) -> None:
+    summary_lines = []
+    for i, alloc in enumerate(allocations, 1):
+        games_in_mix = [
+            DISPLAY_NAMES[g]
+            for g in ["joker", "loto_649", "loto_540"]
+            if alloc.tickets.get(g, 0) > 0
+        ]
+        summary_lines.append(f"Mix {i}: {' + '.join(games_in_mix)}")
+        for g in ["joker", "loto_649", "loto_540"]:
+            n = alloc.tickets.get(g, 0)
+            if n > 0:
+                summary_lines.append(f"  {DISPLAY_NAMES[g]}: {n} ticket(s)")
+        summary_lines.append(f"  P(any win): {alloc.p_any_win * 100:.2f}%")
+        summary_lines.append(f"  Cost: {alloc.total_cost:.0f} RON")
+        summary_lines.append("")
+    (output_dir / "mixes_summary.txt").write_text("\n".join(summary_lines))
 
 
 if __name__ == "__main__":

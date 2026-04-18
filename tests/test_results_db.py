@@ -130,5 +130,58 @@ class TestResultsDBPersistence(unittest.TestCase):
             )
 
 
+class TestResultsDBTicketSchema(unittest.TestCase):
+    def test_ensure_schema_adds_ticket_columns(self):
+        from shared.results_db import _ResultsDB
+        with tempfile.TemporaryDirectory() as tmp:
+            dsn = f"sqlite:///{tmp}/test.db"
+            db = _ResultsDB(dsn)
+            try:
+                db.ensure_schema()
+                cursor = db.connection.cursor()
+
+                cursor.execute("PRAGMA table_info(generated_tickets)")
+                cols = {row[1] for row in cursor.fetchall()}
+                self.assertIn("ticket_id", cols)
+                self.assertIn("variant_no", cols)
+                self.assertIn("side_game_number", cols)
+                self.assertIn("cost_ron", cols)
+                self.assertIn("builder_name", cols)
+
+                cursor.execute("PRAGMA table_info(check_results)")
+                cols = {row[1] for row in cursor.fetchall()}
+                self.assertIn("ticket_id", cols)
+                self.assertIn("side_game_match", cols)
+                self.assertIn("side_game_digits_matched", cols)
+                self.assertIn("winning_side_game", cols)
+
+                cursor.execute("PRAGMA table_info(budget_ledger_entries)")
+                cols = {row[1] for row in cursor.fetchall()}
+                self.assertIn("draw_date", cols)
+                self.assertIn("kind", cols)
+                self.assertIn("amount", cols)
+                self.assertIn("balance_after", cols)
+                cursor.close()
+            finally:
+                db.close()
+
+    def test_ensure_schema_is_idempotent(self):
+        from shared.results_db import _ResultsDB
+        with tempfile.TemporaryDirectory() as tmp:
+            dsn = f"sqlite:///{tmp}/idempotent.db"
+            db = _ResultsDB(dsn)
+            try:
+                db.ensure_schema()
+                db.ensure_schema()  # must not error on re-run
+                cursor = db.connection.cursor()
+                cursor.execute("PRAGMA table_info(generated_tickets)")
+                cols = [row[1] for row in cursor.fetchall()]
+                # columns appear exactly once
+                self.assertEqual(len([c for c in cols if c == "ticket_id"]), 1)
+                cursor.close()
+            finally:
+                db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
