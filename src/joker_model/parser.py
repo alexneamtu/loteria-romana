@@ -18,12 +18,14 @@ def parse_joker_results(html: str) -> list[JokerDraw]:
 
         main_nums = [int(n) for n in re.findall(r"/bile/(\d{1,2})\.png", window)]
         joker_nums = [int(n) for n in re.findall(r"/bile/joker/(\d{1,2})\.png", window)]
+        noroc_plus_nums = re.findall(r"/bile/noroc-plus/(\d{1,2})\.png", window)
 
         if len(main_nums) < 5 or not joker_nums:
             continue
 
         main = sorted(main_nums[-5:])
         joker = joker_nums[-1]
-        draws.append(JokerDraw(_normalize_date(match.group(1)), main, joker))
+        noroc_plus = f"NP{int(noroc_plus_nums[-1]):02d}" if noroc_plus_nums else None
+        draws.append(JokerDraw(_normalize_date(match.group(1)), main, joker, noroc_plus))
 
     return draws
