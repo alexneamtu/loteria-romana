@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 
+from loto_649_model.models import Loto649Draw
 from loto_649_model.parser import parse_loto_649_results
 
 
@@ -13,6 +14,20 @@ class TestLoto649Parser(unittest.TestCase):
         self.assertIn("2026-01-15", draw_by_date)
         self.assertIn("2026-01-11", draw_by_date)
         self.assertEqual(draw_by_date["2026-01-15"].main_numbers, [11, 19, 33, 44, 45, 46])
+
+
+class TestLoto649DrawModel(unittest.TestCase):
+    def test_noroc_defaults_to_none(self):
+        d = Loto649Draw(date="2026-01-15", main_numbers=[1, 5, 17, 23, 34, 49])
+        self.assertIsNone(d.noroc)
+
+    def test_noroc_accepts_7_digit_string(self):
+        d = Loto649Draw(
+            date="2026-01-15",
+            main_numbers=[1, 5, 17, 23, 34, 49],
+            noroc="0123456",
+        )
+        self.assertEqual(d.noroc, "0123456")
 
 
 if __name__ == "__main__":
