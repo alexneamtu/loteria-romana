@@ -479,7 +479,7 @@ class TestTicket(unittest.TestCase):
             variants=variants,
             side_game_number="1234567",
             strategy="wheel_3if9",
-            cost_ron=24.5,
+            cost_ron=28.5,
         )
         self.assertEqual(len(t.variants), 3)
 
@@ -495,7 +495,7 @@ class TestTicket(unittest.TestCase):
             variants=variants,
             side_game_number="123456",
             strategy="independent",
-            cost_ron=20.5,
+            cost_ron=22.5,
         )
         self.assertEqual(len(t.variants), 4)
 
