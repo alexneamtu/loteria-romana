@@ -180,3 +180,49 @@ class TestCheckResultsTicketsJSON(unittest.TestCase):
     def test_score_ticket_super_noroc_partial(self):
         from scripts.check_results import score_side_game_match
         self.assertEqual(score_side_game_match("loto_540", "123456", "999456"), (0, 3))
+
+
+class TestCheckResultsWritesJSONL(unittest.TestCase):
+    def test_write_picks_detail_appends_rows(self):
+        import tempfile
+        from pathlib import Path
+        from scripts.check_results import write_picks_detail
+
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl = Path(tmp) / "picks_detail.jsonl"
+            write_picks_detail(
+                jsonl_path=jsonl,
+                rows=[{
+                    "draw_date": "2026-04-21",
+                    "game": "joker",
+                    "ticket_id": "tkt-1",
+                    "strategy": "core_share",
+                    "best_main_match": 3,
+                    "variants": [{"main_numbers": [3, 7, 12, 19, 28], "bonus_number": 11}],
+                    "side_game_number": "NP07",
+                    "winning_side_game": "NP14",
+                    "side_game_match": 0,
+                    "side_game_digits_matched": 0,
+                    "cost_ron": 17.5,
+                }],
+            )
+            self.assertTrue(jsonl.exists())
+            text = jsonl.read_text().strip()
+            self.assertIn("tkt-1", text)
+            self.assertIn("core_share", text)
+
+
+class TestSideGameRetry(unittest.TestCase):
+    def test_is_side_game_ready(self):
+        from scripts.check_results import is_side_game_ready
+
+        class FakeDraw:
+            def __init__(self, noroc_plus=None, noroc=None, super_noroc=None):
+                self.noroc_plus = noroc_plus
+                self.noroc = noroc
+                self.super_noroc = super_noroc
+
+        self.assertTrue(is_side_game_ready(FakeDraw(noroc_plus="NP07"), attr="noroc_plus"))
+        self.assertFalse(is_side_game_ready(FakeDraw(noroc_plus=None), attr="noroc_plus"))
+        self.assertTrue(is_side_game_ready(FakeDraw(noroc="1234567"), attr="noroc"))
+        self.assertFalse(is_side_game_ready(FakeDraw(), attr="super_noroc"))

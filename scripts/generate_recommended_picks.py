@@ -68,7 +68,7 @@ def build_parser():
     )
     parser.add_argument(
         "--output-dir", type=str,
-        help="Save picks to files in this directory (tickets.json, joker.txt, etc.)",
+        help="Save picks to files in this directory (tickets.json)",
     )
     parser.add_argument(
         "--ev-gate", action="store_true",
@@ -242,22 +242,6 @@ def _write_outputs(output_dir, tickets, allocation, budget_ron, suffix=""):
         allocation=dict(allocation.tickets),
         generated_at=generated_at,
     )
-    # Legacy .txt shim — Plan D deletes this.
-    for game, label in (("joker", "joker"), ("loto_649", "loto649"), ("loto_540", "loto540")):
-        game_tickets = [t for t in tickets if t.game == game]
-        if not game_tickets:
-            continue
-        lines: list[str] = []
-        idx = 1
-        for t in game_tickets:
-            for v in t.variants:
-                main = ", ".join(str(n) for n in v.main_numbers)
-                if game == "joker":
-                    lines.append(f"{idx}. {main} + J{v.bonus_number}")
-                else:
-                    lines.append(f"{idx}. {main}")
-                idx += 1
-        (output_dir / f"{label}{suffix}.txt").write_text("\n".join(lines) + "\n")
 
 
 def apply_ev_gate(
@@ -466,8 +450,6 @@ def main():
 
             all_db_rows.extend(_tickets_to_db_rows(tickets, suffix=suffix))
 
-        if output_dir and allocations:
-            _write_mixes_summary(output_dir, allocations)
 
         best_alloc = allocations[0] if allocations else TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
@@ -581,23 +563,6 @@ def _print_tickets(tickets) -> None:
                 idx += 1
 
 
-def _write_mixes_summary(output_dir: Path, allocations: list[TicketAllocation]) -> None:
-    summary_lines = []
-    for i, alloc in enumerate(allocations, 1):
-        games_in_mix = [
-            DISPLAY_NAMES[g]
-            for g in ["joker", "loto_649", "loto_540"]
-            if alloc.tickets.get(g, 0) > 0
-        ]
-        summary_lines.append(f"Mix {i}: {' + '.join(games_in_mix)}")
-        for g in ["joker", "loto_649", "loto_540"]:
-            n = alloc.tickets.get(g, 0)
-            if n > 0:
-                summary_lines.append(f"  {DISPLAY_NAMES[g]}: {n} ticket(s)")
-        summary_lines.append(f"  P(any win): {alloc.p_any_win * 100:.2f}%")
-        summary_lines.append(f"  Cost: {alloc.total_cost:.0f} RON")
-        summary_lines.append("")
-    (output_dir / "mixes_summary.txt").write_text("\n".join(summary_lines))
 
 
 if __name__ == "__main__":

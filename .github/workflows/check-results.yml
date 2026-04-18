@@ -34,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install DB driver
         run: pip install psycopg[binary]
@@ -69,29 +69,28 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          send_message() {
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-              -d chat_id="${TELEGRAM_CHAT_ID}" \
-              -d text="$1" \
-              -d parse_mode="Markdown" > /dev/null
-          }
-
-          # Send per-game results (one message each)
           for file in results/loto540.txt results/loto649.txt results/joker.txt; do
             if [ -f "$file" ]; then
-              send_message "$(cat "$file")"
+              msg="$(cat "$file")"
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                -d chat_id="${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=${msg}" \
+                -d parse_mode=Markdown > /dev/null
             fi
           done
 
-          # Send strategy ranking summary
           if [ -f "results/comparison.txt" ]; then
-            send_message "$(cat results/comparison.txt)"
+            msg="$(cat results/comparison.txt)"
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              --data-urlencode "text=${msg}" \
+              -d parse_mode=Markdown > /dev/null
           fi
 
       - name: Commit results history
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/results/history.csv
+          git add data/results/history.csv data/results/picks_detail.jsonl
           git diff --staged --quiet || git commit -m "chore: update results history"
           git push

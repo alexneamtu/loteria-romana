@@ -154,7 +154,7 @@ class TestGenerateTicketsJSON(unittest.TestCase):
             for t in doc["tickets"]:
                 self.assertEqual(len(t["variants"]), expected_variants[t["game"]])
 
-    def test_legacy_txt_files_still_emitted(self):
+    def test_legacy_txt_files_no_longer_emitted(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "picks"
             subprocess.check_call(
@@ -168,9 +168,7 @@ class TestGenerateTicketsJSON(unittest.TestCase):
                 ],
                 env={"PYTHONPATH": "src", "PATH": ""},
             )
-            # Plan C preserves legacy .txt for Plan D's transition.
-            txts = list(out.glob("*.txt"))
-            self.assertGreater(len(txts), 0)
+            self.assertEqual(list(out.glob("*.txt")), [])
 
 
 class TestEVSkipBoost(unittest.TestCase):
