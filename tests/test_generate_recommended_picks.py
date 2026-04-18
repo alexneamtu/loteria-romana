@@ -173,5 +173,50 @@ class TestGenerateTicketsJSON(unittest.TestCase):
             self.assertGreater(len(txts), 0)
 
 
+class TestEVSkipBoost(unittest.TestCase):
+    def test_skip_when_all_ratios_below_skip_ratio(self):
+        import json, subprocess, sys, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "picks"
+            # All jackpots zero → ratio 0 → skip
+            subprocess.check_call([
+                sys.executable, "scripts/generate_recommended_picks.py",
+                "--budget", "70", "--seed", "42", "--output-dir", str(out),
+                "--ev-gate", "--ev-skip-ratio", "0.5",
+                "--joker-jackpot", "0",
+                "--loto649-jackpot", "0",
+                "--loto540-jackpot", "0",
+                "--ledger-path", str(out / "ledger.json"),
+            ], env={"PYTHONPATH": "src", "PATH": ""})
+            # Expect: no tickets.json emitted, ledger has +70 credit
+            self.assertFalse((out / "tickets.json").exists())
+            led = json.loads((out / "ledger.json").read_text())
+            self.assertEqual(led["balance"], 70.0)
+
+    def test_boost_when_ratio_above_boost_ratio(self):
+        import json, subprocess, sys, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "picks"
+            ledger_path = out / "ledger.json"
+            out.mkdir(parents=True)
+            # Pre-credit the ledger
+            ledger_path.write_text(json.dumps({"balance": 40.0, "entries": []}))
+            subprocess.check_call([
+                sys.executable, "scripts/generate_recommended_picks.py",
+                "--budget", "70", "--seed", "42", "--output-dir", str(out),
+                "--ev-gate", "--ev-boost-ratio", "1.2",
+                "--joker-jackpot", "600000000",  # huge jackpot → ratio > 1.2 → boost
+                "--ledger-path", str(ledger_path),
+            ], env={"PYTHONPATH": "src", "PATH": ""})
+            # tickets.json emitted with budget > 70 (boosted)
+            doc = json.loads((out / "tickets.json").read_text())
+            self.assertGreater(doc["budget_ron"], 70.0)
+            # Ledger debited
+            led = json.loads(ledger_path.read_text())
+            self.assertLess(led["balance"], 40.0)
+
+
 if __name__ == "__main__":
     unittest.main()

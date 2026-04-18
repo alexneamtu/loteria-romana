@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 import random
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from shared.ev_calculator import EVCalculator
 from shared.pricing import compute_ticket_cost
 from shared.recency import resolve_recency_settings
 from shared.results_db import persist_generation_run
+from shared.budget_ledger import BudgetLedger
 
 
 DISPLAY_NAMES = {
@@ -94,6 +96,18 @@ def build_parser():
             "Ticket build strategy: 'independent', 'core_share', "
             "or 'wheel:<pool_size>' (default: independent)"
         ),
+    )
+    parser.add_argument(
+        "--ev-skip-ratio", type=float, default=0.5,
+        help="Skip draw if all games' jackpot/breakeven ratio < this",
+    )
+    parser.add_argument(
+        "--ev-boost-ratio", type=float, default=1.2,
+        help="Boost budget from ledger if any game's ratio > this",
+    )
+    parser.add_argument(
+        "--ledger-path", type=str, default="picks/budget_bank.json",
+        help="Path to budget ledger JSON file",
     )
     return parser
 
@@ -299,6 +313,49 @@ def apply_ev_gate(
     return filtered, details
 
 
+@dataclass
+class EVDecision:
+    action: str  # "play" | "skip" | "boost"
+    reason: str
+    extra_budget: float = 0.0
+
+
+def apply_ev_gate_v2(
+    budget: float,
+    jackpots: dict[str, float | None],
+    skip_ratio: float,
+    boost_ratio: float,
+) -> EVDecision:
+    """Compute per-game jackpot/breakeven ratios and decide skip/boost/play."""
+    from shared.pricing import compute_ticket_cost as _cost
+    calc = EVCalculator()
+    games = {
+        "joker": calc.create_joker(ticket_cost=_cost("joker")),
+        "loto_649": calc.create_loto_649(ticket_cost=_cost("loto_649")),
+        "loto_540": calc.create_loto_540(ticket_cost=_cost("loto_540")),
+    }
+    ratios: dict[str, float] = {}
+    for game_name, game in games.items():
+        jackpot = jackpots.get(game_name)
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        if jackpot is None or breakeven is None or breakeven <= 0:
+            ratios[game_name] = 0.0
+        else:
+            ratios[game_name] = jackpot / breakeven
+
+    max_ratio = max(ratios.values())
+
+    if max_ratio < skip_ratio:
+        return EVDecision(action="skip", reason=f"all ratios < {skip_ratio}")
+    if max_ratio > boost_ratio:
+        return EVDecision(
+            action="boost",
+            reason=f"max ratio {max_ratio:.2f} > {boost_ratio}",
+            extra_budget=budget,
+        )
+    return EVDecision(action="play", reason=f"ratios OK (max {max_ratio:.2f})")
+
+
 def _top_n_diverse_allocations(budget_ron: float, n: int) -> list[TicketAllocation]:
     """Top N allocations with diverse active-game mixes, ranked by p_any_win."""
     all_allocs = enumerate_allocations(budget_ron=budget_ron)
@@ -340,8 +397,38 @@ def main():
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    effective_budget = args.budget
+    if args.ev_gate:
+        ledger_path = Path(args.ledger_path)
+        ledger = BudgetLedger(ledger_path)
+        decision = apply_ev_gate_v2(
+            budget=args.budget,
+            jackpots=jackpots,
+            skip_ratio=args.ev_skip_ratio,
+            boost_ratio=args.ev_boost_ratio,
+        )
+        draw_date = datetime.now(UTC).date().isoformat()
+        if decision.action == "skip":
+            ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=decision.reason)
+            print(f"EV gate: SKIP — {decision.reason}. Ledger balance: {ledger.balance():.2f} RON")
+            persist_generation_run(
+                budget=args.budget,
+                seed=args.seed,
+                ev_gate=True,
+                ev_min_ratio=args.ev_skip_ratio,
+                jackpots=jackpots,
+                allocation={"tickets": {}, "total_cost": 0.0, "p_any_win": 0.0, "budget": args.budget},
+                gate_details={"action": "skip", "reason": decision.reason},
+                tickets=[],
+            )
+            return
+        if decision.action == "boost":
+            actual = ledger.debit_boost(draw_date=draw_date, amount=decision.extra_budget, reason=decision.reason)
+            effective_budget = args.budget + actual
+            print(f"EV gate: BOOST +{actual:.2f} → effective {effective_budget:.2f} RON")
+
     if args.mixes > 1:
-        allocations = _top_n_diverse_allocations(args.budget, args.mixes)
+        allocations = _top_n_diverse_allocations(effective_budget, args.mixes)
         if args.ev_gate:
             filtered = []
             for alloc in allocations:
@@ -365,7 +452,7 @@ def main():
             print(f"\n{'=' * 50}")
             print(f"MIX {i}: {' + '.join(games_in_mix)}")
             print(f"{'=' * 50}")
-            print(_format_allocation(alloc, args.budget))
+            print(_format_allocation(alloc, effective_budget))
 
             tickets = _build_tickets_for_allocation(
                 alloc, rng, half_life, half_life_mode, args.strategy,
@@ -375,7 +462,7 @@ def main():
 
             suffix = f"_mix{i}"
             if output_dir:
-                _write_outputs(output_dir, tickets, alloc, args.budget, suffix=suffix)
+                _write_outputs(output_dir, tickets, alloc, effective_budget, suffix=suffix)
 
             all_db_rows.extend(_tickets_to_db_rows(tickets, suffix=suffix))
 
@@ -388,7 +475,7 @@ def main():
             p_any_win=0.0,
         )
         persist_generation_run(
-            budget=args.budget,
+            budget=effective_budget,
             seed=args.seed,
             ev_gate=args.ev_gate,
             ev_min_ratio=args.ev_min_ratio,
@@ -397,21 +484,21 @@ def main():
                 "tickets": best_alloc.tickets,
                 "total_cost": best_alloc.total_cost,
                 "p_any_win": best_alloc.p_any_win,
-                "budget": args.budget,
+                "budget": effective_budget,
                 "mixes": len(allocations),
             },
             gate_details={},
             tickets=all_db_rows,
         )
     else:
-        allocation = best_allocation(budget_ron=args.budget)
+        allocation = best_allocation(budget_ron=effective_budget)
         allocation, gate_details = apply_ev_gate(
             allocation=allocation,
             enabled=args.ev_gate,
             min_ratio=args.ev_min_ratio,
             jackpots=jackpots,
         )
-        print(_format_allocation(allocation, args.budget))
+        print(_format_allocation(allocation, effective_budget))
 
         if args.verbose and args.ev_gate:
             print()
@@ -428,7 +515,7 @@ def main():
 
         if allocation.p_any_win == 0:
             persist_generation_run(
-                budget=args.budget,
+                budget=effective_budget,
                 seed=args.seed,
                 ev_gate=args.ev_gate,
                 ev_min_ratio=args.ev_min_ratio,
@@ -437,7 +524,7 @@ def main():
                     "tickets": allocation.tickets,
                     "total_cost": allocation.total_cost,
                     "p_any_win": allocation.p_any_win,
-                    "budget": args.budget,
+                    "budget": effective_budget,
                 },
                 gate_details=gate_details,
                 tickets=[],
@@ -451,11 +538,11 @@ def main():
         _print_tickets(tickets)
 
         if output_dir:
-            _write_outputs(output_dir, tickets, allocation, args.budget)
+            _write_outputs(output_dir, tickets, allocation, effective_budget)
 
         db_rows = _tickets_to_db_rows(tickets)
         persist_generation_run(
-            budget=args.budget,
+            budget=effective_budget,
             seed=args.seed,
             ev_gate=args.ev_gate,
             ev_min_ratio=args.ev_min_ratio,
@@ -464,7 +551,7 @@ def main():
                 "tickets": allocation.tickets,
                 "total_cost": allocation.total_cost,
                 "p_any_win": allocation.p_any_win,
-                "budget": args.budget,
+                "budget": effective_budget,
             },
             gate_details=gate_details,
             tickets=db_rows,
