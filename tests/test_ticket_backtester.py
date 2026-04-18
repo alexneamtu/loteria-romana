@@ -63,5 +63,29 @@ class TestTicketBacktester(unittest.TestCase):
         )
 
 
+from shared.game_config import JOKER_CONFIG
+
+
+class TestTicketBacktesterJokerBonus(unittest.TestCase):
+    def test_joker_uses_bonus_ball_in_payout(self):
+        # 60 fake joker draws: mains + joker bonus
+        rng = random.Random(42)
+        mains = [sorted(rng.sample(range(1, 46), 5)) for _ in range(60)]
+        bonuses = [rng.randint(1, 20) for _ in range(60)]
+        bt = TicketBacktester(
+            game="joker",
+            config=JOKER_CONFIG,
+            draws=mains,
+            joker_bonuses=bonuses,
+            draw_dates=None,
+            warmup=50,
+            rng=random.Random(0),
+        )
+        outcomes = bt.run(IndependentBuilder(n_tickets=1))
+        self.assertEqual(len(outcomes), 10)
+        # Outcomes should include some nonzero payouts thanks to fixed-prize joker tiers
+        self.assertTrue(any(o.payout > 0 for o in outcomes))
+
+
 if __name__ == "__main__":
     unittest.main()
