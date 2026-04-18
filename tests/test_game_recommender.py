@@ -20,18 +20,18 @@ class TestCalculateWinProbability(unittest.TestCase):
     def test_joker_win_rate(self):
         gp = calculate_win_probability("joker")
         self.assertAlmostEqual(gp.win_rate, 0.02929, places=4)
-        self.assertEqual(gp.ticket_cost, 8.0)
+        self.assertEqual(gp.ticket_cost, 14.5)
         self.assertEqual(gp.name, "joker")
 
     def test_loto_649_win_rate(self):
         gp = calculate_win_probability("loto_649")
         self.assertAlmostEqual(gp.win_rate, 0.01864, places=4)
-        self.assertEqual(gp.ticket_cost, 6.0)
+        self.assertEqual(gp.ticket_cost, 24.5)
 
     def test_loto_540_win_rate(self):
         gp = calculate_win_probability("loto_540")
         self.assertAlmostEqual(gp.win_rate, 0.000784, places=5)
-        self.assertEqual(gp.ticket_cost, 4.0)
+        self.assertEqual(gp.ticket_cost, 20.5)
 
     def test_joker_is_best_per_ron(self):
         joker = calculate_win_probability("joker")
@@ -74,28 +74,29 @@ class TestCalculateWinProbability(unittest.TestCase):
 
 
 class TestOptimizeBudget(unittest.TestCase):
-    def test_budget_8_is_one_joker(self):
-        alloc = optimize_budget(8)
+    def test_budget_14_5_is_one_joker(self):
+        alloc = optimize_budget(14.5)
         self.assertEqual(alloc.tickets["joker"], 1)
         self.assertEqual(alloc.tickets.get("loto_649", 0), 0)
-        self.assertEqual(alloc.total_cost, 8.0)
+        self.assertEqual(alloc.total_cost, 14.5)
 
-    def test_budget_14_is_joker_plus_649(self):
-        alloc = optimize_budget(14)
-        self.assertEqual(alloc.tickets["joker"], 1)
-        self.assertEqual(alloc.tickets["loto_649"], 1)
-        self.assertEqual(alloc.total_cost, 14.0)
+    def test_budget_39_is_two_jokers(self):
+        # 2 jokers (29 RON) beats 1 joker + 1 loto_649 (39 RON) on P(any win)
+        alloc = optimize_budget(39)
+        self.assertEqual(alloc.tickets["joker"], 2)
+        self.assertEqual(alloc.tickets.get("loto_649", 0), 0)
+        self.assertAlmostEqual(alloc.total_cost, 29.0)
 
-    def test_budget_24_is_three_jokers(self):
-        alloc = optimize_budget(24)
+    def test_budget_43_5_is_three_jokers(self):
+        alloc = optimize_budget(43.5)
         self.assertEqual(alloc.tickets["joker"], 3)
-        self.assertAlmostEqual(alloc.total_cost, 24.0)
+        self.assertAlmostEqual(alloc.total_cost, 43.5)
 
     def test_budget_100_primarily_joker(self):
         alloc = optimize_budget(100)
         self.assertGreater(alloc.tickets["joker"], 0)
         self.assertLessEqual(alloc.total_cost, 100)
-        self.assertGreater(alloc.p_any_win, 0.25)
+        self.assertGreater(alloc.p_any_win, 0.15)
 
     def test_budget_too_small(self):
         alloc = optimize_budget(3)
@@ -137,9 +138,9 @@ class TestOptimizeBudget(unittest.TestCase):
 
     def test_single_ticket_probabilities(self):
         """Single-ticket allocation should match per-game probabilities."""
-        alloc_8 = optimize_budget(8)
+        alloc = optimize_budget(14.5)
         joker_p = calculate_win_probability("joker").win_rate
-        self.assertAlmostEqual(alloc_8.p_any_win, joker_p, places=6)
+        self.assertAlmostEqual(alloc.p_any_win, joker_p, places=6)
 
 
 class TestFormatRecommendation(unittest.TestCase):
@@ -159,13 +160,14 @@ class TestFormatRecommendation(unittest.TestCase):
         self.assertIn("too small", text)
 
     def test_format_shows_game_names(self):
-        alloc = optimize_budget(14)
+        # Joker always dominates at correct pricing; verify it appears in output
+        alloc = optimize_budget(39)
         text = format_recommendation(alloc)
         self.assertIn("Joker", text)
-        self.assertIn("Loto 6/49", text)
 
     def test_format_shows_unspent(self):
-        alloc = optimize_budget(10)
+        # 1 Joker costs 14.5 RON, leaving 2.0 RON unspent from 16.5
+        alloc = optimize_budget(16.5)
         text = format_recommendation(alloc)
         self.assertIn("Unspent: 2 RON", text)
 

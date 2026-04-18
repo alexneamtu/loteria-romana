@@ -194,22 +194,22 @@ def _optimize_budget_with_allowed_games(
         game: calculate_win_probability(game).win_rate
         for game in TICKET_COSTS
     }
-    budget = int(budget_ron)
+    costs = TICKET_COSTS
     best = BudgetAllocation(budget=budget_ron)
 
-    joker_range = range(budget // 8 + 1) if "joker" in allowed_games else [0]
-    loto649_range_template = range(budget // 6 + 1) if "loto_649" in allowed_games else [0]
+    joker_range = range(int(budget_ron // costs["joker"]) + 1) if "joker" in allowed_games else [0]
+    loto649_range_template = range(int(budget_ron // costs["loto_649"]) + 1) if "loto_649" in allowed_games else [0]
     loto540_allowed = "loto_540" in allowed_games
 
     for n_joker in joker_range:
-        remaining_after_joker = budget - n_joker * 8
+        remaining_after_joker = budget_ron - n_joker * costs["joker"]
         loto649_range = loto649_range_template if "loto_649" in allowed_games else [0]
         for n_649 in loto649_range:
-            cost_649 = n_649 * 6
+            cost_649 = n_649 * costs["loto_649"]
             if cost_649 > remaining_after_joker:
                 continue
             remaining = remaining_after_joker - cost_649
-            n_540 = remaining // 4 if loto540_allowed else 0
+            n_540 = int(remaining // costs["loto_540"]) if loto540_allowed else 0
 
             tickets = {"joker": n_joker, "loto_649": n_649, "loto_540": n_540}
             total_tickets = sum(tickets.values())
@@ -222,12 +222,12 @@ def _optimize_budget_with_allowed_games(
                     continue
                 p_no_win *= (1 - probabilities[game]) ** count
             p_any = 1 - p_no_win
-            cost = n_joker * 8 + n_649 * 6 + n_540 * 4
+            cost = n_joker * costs["joker"] + n_649 * costs["loto_649"] + n_540 * costs["loto_540"]
 
             if p_any > best.p_any_win:
                 best = BudgetAllocation(
                     tickets=tickets,
-                    total_cost=float(cost),
+                    total_cost=cost,
                     p_any_win=p_any,
                     budget=budget_ron,
                 )

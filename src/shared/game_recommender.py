@@ -12,11 +12,21 @@ from dataclasses import dataclass, field
 from math import comb
 
 
-TICKET_COSTS = {
-    "joker": 8.0,
-    "loto_649": 6.0,
-    "loto_540": 4.0,
-}
+def _legacy_ticket_costs() -> dict[str, float]:
+    """Main-ticket cost per game (variants + fee, no side game).
+
+    Sourced from shared.pricing; retained as TICKET_COSTS for
+    backward-compatible imports. Full-ticket pricing including side
+    games lives in shared.pricing.compute_ticket_cost.
+    """
+    from .pricing import compute_ticket_cost
+    return {
+        game: compute_ticket_cost(game, include_side_game=False)
+        for game in ("joker", "loto_649", "loto_540")
+    }
+
+
+TICKET_COSTS = _legacy_ticket_costs()
 
 
 @dataclass(frozen=True)
@@ -126,29 +136,29 @@ def optimize_budget(budget_ron: float) -> BudgetAllocation:
         "loto_540": _loto_540_win_probability(),
     }
 
+    costs = TICKET_COSTS
     best = BudgetAllocation(budget=budget_ron)
-    budget = int(budget_ron)
 
-    max_joker = budget // 8
+    max_joker = int(budget_ron // costs["joker"])
     for n_joker in range(max_joker + 1):
-        remaining_after_joker = budget - n_joker * 8
-        max_649 = remaining_after_joker // 6
+        remaining_after_joker = budget_ron - n_joker * costs["joker"]
+        max_649 = int(remaining_after_joker // costs["loto_649"])
         for n_649 in range(max_649 + 1):
-            remaining = remaining_after_joker - n_649 * 6
-            n_540 = remaining // 4
+            remaining = remaining_after_joker - n_649 * costs["loto_649"]
+            n_540 = int(remaining // costs["loto_540"])
 
             total_tickets = n_joker + n_649 + n_540
             if total_tickets == 0:
                 continue
 
             tickets = {"joker": n_joker, "loto_649": n_649, "loto_540": n_540}
-            cost = n_joker * 8 + n_649 * 6 + n_540 * 4
+            cost = n_joker * costs["joker"] + n_649 * costs["loto_649"] + n_540 * costs["loto_540"]
             p = _p_any_win(probabilities, tickets)
 
             if p > best.p_any_win:
                 best = BudgetAllocation(
                     tickets=tickets,
-                    total_cost=float(cost),
+                    total_cost=cost,
                     p_any_win=p,
                     budget=budget_ron,
                 )
@@ -172,30 +182,30 @@ def top_diverse_allocations(budget_ron: float, count: int = 3) -> list[BudgetAll
     }
 
     # Collect all valid allocations grouped by active game set
+    costs = TICKET_COSTS
     by_mix: dict[frozenset[str], BudgetAllocation] = {}
-    budget = int(budget_ron)
 
-    max_joker = budget // 8
+    max_joker = int(budget_ron // costs["joker"])
     for n_joker in range(max_joker + 1):
-        remaining_after_joker = budget - n_joker * 8
-        max_649 = remaining_after_joker // 6
+        remaining_after_joker = budget_ron - n_joker * costs["joker"]
+        max_649 = int(remaining_after_joker // costs["loto_649"])
         for n_649 in range(max_649 + 1):
-            remaining = remaining_after_joker - n_649 * 6
-            n_540 = remaining // 4
+            remaining = remaining_after_joker - n_649 * costs["loto_649"]
+            n_540 = int(remaining // costs["loto_540"])
 
             tickets = {"joker": n_joker, "loto_649": n_649, "loto_540": n_540}
             active = frozenset(g for g, c in tickets.items() if c > 0)
             if not active:
                 continue
 
-            cost = n_joker * 8 + n_649 * 6 + n_540 * 4
+            cost = n_joker * costs["joker"] + n_649 * costs["loto_649"] + n_540 * costs["loto_540"]
             p = _p_any_win(probabilities, tickets)
 
             prev = by_mix.get(active)
             if prev is None or p > prev.p_any_win:
                 by_mix[active] = BudgetAllocation(
                     tickets=tickets,
-                    total_cost=float(cost),
+                    total_cost=cost,
                     p_any_win=p,
                     budget=budget_ron,
                 )
