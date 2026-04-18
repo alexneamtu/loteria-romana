@@ -15,7 +15,7 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertIn("Enable EV/jackpot gate", self.text)
 
     def test_default_budget_present(self):
-        self.assertIn("default: '40'", self.text)
+        self.assertIn("default: '70'", self.text)
         self.assertIn("default: 'false'", self.text)
 
     def test_database_env_and_driver_present(self):
@@ -32,11 +32,11 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertIn("--ev-min-ratio", self.text)
 
     def test_telegram_step_uses_file_existence_check(self):
-        self.assertIn('if [ -f "picks/joker${mix_suffix}.txt" ]', self.text)
-        self.assertIn('if [ -f "picks/loto649${mix_suffix}.txt" ]', self.text)
-        self.assertIn('if [ -f "picks/loto540${mix_suffix}.txt" ]', self.text)
+        self.assertIn('if [ ! -f picks/tickets.json ]', self.text)
+        self.assertIn('No tickets.json emitted', self.text)
 
     def test_telegram_step_sends_messages(self):
-        self.assertIn("send_message", self.text)
+        self.assertIn("workflow_messages.py", self.text)
         self.assertIn("TELEGRAM_BOT_TOKEN", self.text)
         self.assertIn("TELEGRAM_CHAT_ID", self.text)
+        self.assertIn("curl", self.text)
