@@ -26,6 +26,8 @@ class TicketBacktester:
     draw_dates: list[str] | None
     warmup: int
     rng: Random
+    joker_bonuses: list[int] | None = None
+    winning_side_games: list[str | None] | None = None
     jackpot: float = 1_000_000.0
 
     def run(self, builder: TicketBuilder) -> list[TicketOutcome]:
@@ -42,13 +44,15 @@ class TicketBacktester:
             )
             tickets = builder.build(ctx)
             drawn = self.draws[i]
+            bonus = self.joker_bonuses[i] if self.joker_bonuses else None
+            side_win = self.winning_side_games[i] if self.winning_side_games else None
             for t in tickets:
                 best = t.best_main_match(drawn)
                 payout = estimate_ticket_payout(
                     t,
                     winning_main=drawn,
-                    winning_joker=None,
-                    winning_side=None,
+                    winning_joker=bonus,
+                    winning_side=side_win,
                     jackpot=self.jackpot,
                 )
                 outcomes.append(
