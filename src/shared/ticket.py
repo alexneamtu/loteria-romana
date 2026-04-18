@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from .pricing import VARIANTS_PER_TICKET
+
 Game = Literal["joker", "loto_649", "loto_540"]
 
 _MAIN_COUNT: dict[str, int] = {"joker": 5, "loto_649": 6, "loto_540": 5}
@@ -54,3 +56,38 @@ class Variant:
 
     def count_main_matches(self, winning: tuple[int, ...] | list[int]) -> int:
         return len(set(self.main_numbers) & set(winning))
+
+
+@dataclass(frozen=True)
+class Ticket:
+    game: str
+    variants: tuple[Variant, ...]
+    side_game_number: str
+    strategy: str
+    cost_ron: float
+
+    def __post_init__(self) -> None:
+        if self.game not in VARIANTS_PER_TICKET:
+            raise ValueError(f"unknown game: {self.game!r}")
+
+        expected_variants = VARIANTS_PER_TICKET[self.game]
+        if len(self.variants) != expected_variants:
+            raise ValueError(
+                f"{self.game} ticket requires {expected_variants} variants, "
+                f"got {len(self.variants)}"
+            )
+
+        for v in self.variants:
+            if v.game != self.game:
+                raise ValueError(
+                    f"variant game={v.game!r} does not match ticket game={self.game!r}"
+                )
+
+        if not isinstance(self.side_game_number, str):
+            raise ValueError("side_game_number must be a string (leading zeros matter)")
+
+        if self.cost_ron < 0:
+            raise ValueError("cost_ron must be non-negative")
+
+    def best_main_match(self, winning: tuple[int, ...] | list[int]) -> int:
+        return max(v.count_main_matches(winning) for v in self.variants)
