@@ -3,7 +3,7 @@ import unittest
 
 from shared.game_config import JOKER_CONFIG, LOTO_540_CONFIG, LOTO_649_CONFIG
 from shared.ticket import Ticket
-from shared.ticket_builders import BuilderContext, CoreShareBuilder, IndependentBuilder
+from shared.ticket_builders import BuilderContext, CoreShareBuilder, IndependentBuilder, WheelBuilder
 
 
 def _joker_draws():
@@ -190,6 +190,66 @@ class TestCoreShareBuilder(unittest.TestCase):
         t1 = CoreShareBuilder().build(ctx1)[0]
         t2 = CoreShareBuilder().build(ctx2)[0]
         self.assertEqual(t1.variants[0].main_numbers, t2.variants[0].main_numbers)
+
+
+class TestWheelBuilder(unittest.TestCase):
+    def test_joker_wheel_produces_2_variants_covering_pool(self):
+        ctx = BuilderContext(
+            game="joker",
+            config=JOKER_CONFIG,
+            draws=_joker_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        t = WheelBuilder(pool_size=7).build(ctx)[0]
+        self.assertEqual(len(t.variants), 2)
+        self.assertEqual(t.strategy, "wheel")
+        all_mains = set()
+        for v in t.variants:
+            all_mains.update(v.main_numbers)
+        # 2 joker variants (5 each) from a 7-pool should cover all 7
+        self.assertGreaterEqual(len(all_mains), 7)
+
+    def test_loto_649_wheel_covers_full_pool(self):
+        ctx = BuilderContext(
+            game="loto_649",
+            config=LOTO_649_CONFIG,
+            draws=_649_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        t = WheelBuilder(pool_size=8).build(ctx)[0]
+        self.assertEqual(len(t.variants), 3)
+        all_mains: set[int] = set()
+        for v in t.variants:
+            all_mains.update(v.main_numbers)
+        # 3 variants of 6 each, from 8-pool: should cover all 8
+        self.assertEqual(len(all_mains), 8)
+
+    def test_pool_size_must_exceed_per_variant(self):
+        ctx = BuilderContext(
+            game="joker",
+            config=JOKER_CONFIG,
+            draws=_joker_draws(),
+            draw_dates=None,
+            rng=random.Random(42),
+        )
+        with self.assertRaises(ValueError):
+            WheelBuilder(pool_size=5).build(ctx)
+
+    def test_seeded_reproducibility(self):
+        ctx1 = BuilderContext(
+            game="loto_649", config=LOTO_649_CONFIG, draws=_649_draws(),
+            draw_dates=None, rng=random.Random(7),
+        )
+        ctx2 = BuilderContext(
+            game="loto_649", config=LOTO_649_CONFIG, draws=_649_draws(),
+            draw_dates=None, rng=random.Random(7),
+        )
+        t1 = WheelBuilder(pool_size=8).build(ctx1)[0]
+        t2 = WheelBuilder(pool_size=8).build(ctx2)[0]
+        for v1, v2 in zip(t1.variants, t2.variants):
+            self.assertEqual(v1.main_numbers, v2.main_numbers)
 
 
 if __name__ == "__main__":

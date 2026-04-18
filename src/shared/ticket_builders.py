@@ -28,6 +28,7 @@ from .math_utils import softmax
 from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
 from .side_games import generate_noroc, generate_noroc_plus, generate_super_noroc
 from .ticket import Ticket, Variant
+from .wheeling import OptimizedWheelGenerator
 
 
 _SIDE_GAME_GENERATORS = {
@@ -188,4 +189,45 @@ class CoreShareBuilder:
             variants_picks.append(sorted(set(extras))[:per_variant])
 
         variants = _make_variants(ctx, variants_picks)
+        return [_make_ticket(ctx, variants, self.strategy)]
+
+
+class WheelBuilder:
+    """Abbreviated covering wheel over a signal-ranked pool.
+
+    pool_size must be > numbers_per_variant; builder picks top
+    `pool_size` numbers from the softmax signal and wheels them into
+    VARIANTS_PER_TICKET[game] variants using a greedy 3-guarantee
+    covering algorithm.
+    """
+
+    strategy = "wheel"
+
+    def __init__(self, pool_size: int, guarantee: int = 3):
+        self.pool_size = pool_size
+        self.guarantee = guarantee
+
+    def build(self, ctx: BuilderContext) -> list[Ticket]:
+        per_variant = ctx.config.numbers_to_pick
+        if self.pool_size <= per_variant:
+            raise ValueError(
+                f"pool_size={self.pool_size} must exceed per_variant={per_variant}"
+            )
+
+        pool = _top_k_from_signal(ctx, self.pool_size)
+        gen = OptimizedWheelGenerator(per_variant, self.guarantee)
+        variants_per = VARIANTS_PER_TICKET[ctx.game]
+        wheel_lines = gen.generate(pool, max_tickets=variants_per)
+
+        if len(wheel_lines) < variants_per:
+            # Pad with randomized pool subsets
+            existing = {tuple(sorted(line)) for line in wheel_lines}
+            while len(wheel_lines) < variants_per:
+                extra = tuple(sorted(ctx.rng.sample(pool, per_variant)))
+                if extra in existing:
+                    continue
+                existing.add(extra)
+                wheel_lines.append(list(extra))
+
+        variants = _make_variants(ctx, wheel_lines[:variants_per])
         return [_make_ticket(ctx, variants, self.strategy)]
