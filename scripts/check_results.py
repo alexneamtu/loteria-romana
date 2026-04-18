@@ -17,7 +17,13 @@ from loto_649_model.fetch import update_dataset as update_loto649
 from loto_649_model.storage import load_draws as load_loto649
 from loto_540_model.fetch import update_dataset as update_loto540
 from loto_540_model.storage import load_draws as load_loto540
+from shared.picks_detail_history import append_detail_rows
 from shared.results_db import persist_check_results
+from shared.telegram_formatter import format_check_results as _fmt_check_results
+
+
+def write_picks_detail(jsonl_path: Path, rows: list[dict]) -> None:
+    append_detail_rows(jsonl_path, rows)
 
 
 def log(msg: str) -> None:
@@ -430,6 +436,7 @@ def main():
 
     all_game_results = []
     history_rows = []
+    detail_rows: list[dict] = []
     for game_key, emoji, game_label, draws, match_total in games:
         draws_for_game, ticket_game_name = game_draws_map[game_key]
         json_tickets = tickets_by_game.get(ticket_game_name, [])
@@ -439,7 +446,9 @@ def main():
             if not draws_for_game:
                 log(f"No {game_label} draws available")
                 msg = f"{emoji} *{game_label} Results*\n_No results available_"
-                draw_date, winning_str, strategy_results = "N/A", "N/A", {}
+                draw_date, winning_str, winning_main, winning_side, strategy_results = (
+                    "N/A", "N/A", [], None, {}
+                )
             else:
                 latest = draws_for_game[-1]
                 winning_main = latest.main_numbers
@@ -452,16 +461,60 @@ def main():
                 log(f"Latest {game_label}: {draw_date} - {winning_str}")
 
                 strategy_results = {}
+                scored_tickets = []
                 for idx, ticket in enumerate(json_tickets):
                     data = _score_ticket_obj(ticket, winning_main, game_key, winning_side)
+                    ticket_id = f"{draw_date}-{game_key}-{ticket.strategy}-{idx}"
+                    data["ticket_id"] = ticket_id
                     strat_key = f"{ticket.strategy}_{idx}"
-                    data["ticket_id"] = f"{draw_date}-{game_key}-{ticket.strategy}-{idx}"
                     strategy_results[strat_key] = data
+                    scored_tickets.append((ticket, ticket_id, data["best_match"], data["side_game_match"], data["side_game_digits"]))
 
-            msg = build_game_message(
-                emoji, game_label, winning_str, draw_date,
-                strategy_results, match_total,
-            )
+                ticket_outcomes = []
+                for ticket, ticket_id, best_main, side_exact, side_digits in scored_tickets:
+                    variants_rendered = []
+                    for v in ticket.variants:
+                        hits = set(v.main_numbers) & set(winning_main)
+                        main_str = ", ".join(str(n) for n in v.main_numbers)
+                        hit_str = f" [{len(hits)} hit]"
+                        if ticket.game == "joker" and v.bonus_number is not None:
+                            line = f"{main_str} + J{v.bonus_number}{hit_str}"
+                        else:
+                            line = f"{main_str}{hit_str}"
+                        variants_rendered.append(line)
+                    ticket_outcomes.append({
+                        "ticket_id": ticket_id,
+                        "strategy": ticket.strategy,
+                        "best_main_match": best_main,
+                        "side_game_match": side_exact,
+                        "side_game_digits_matched": side_digits,
+                        "variants_rendered": variants_rendered,
+                        "ticket_side": ticket.side_game_number,
+                    })
+                    detail_rows.append({
+                        "draw_date": draw_date,
+                        "game": ticket.game,
+                        "ticket_id": ticket_id,
+                        "strategy": ticket.strategy,
+                        "best_main_match": best_main,
+                        "variants": [
+                            {"main_numbers": list(v.main_numbers), "bonus_number": v.bonus_number}
+                            for v in ticket.variants
+                        ],
+                        "side_game_number": ticket.side_game_number,
+                        "winning_side_game": winning_side or "",
+                        "side_game_match": side_exact,
+                        "side_game_digits_matched": side_digits,
+                        "cost_ron": ticket.cost_ron,
+                    })
+
+                msg = _fmt_check_results(
+                    game=ticket_game_name,
+                    draw_date=draw_date,
+                    winning_main=winning_main,
+                    winning_side=winning_side,
+                    ticket_outcomes=ticket_outcomes,
+                )
         else:
             # Legacy .txt path
             draw_date, winning_str, msg, strategy_results = process_game(
@@ -476,6 +529,9 @@ def main():
     comparison = build_comparison_message(all_game_results)
     (output_dir / "comparison.txt").write_text(comparison, encoding="utf-8")
     log("Wrote comparison message")
+
+    detail_path = Path(os.environ.get("PICKS_DETAIL_PATH", "data/results/picks_detail.jsonl"))
+    write_picks_detail(detail_path, detail_rows)
 
     append_history(history_path, history_rows)
     persist_check_results(
