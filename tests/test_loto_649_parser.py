@@ -30,5 +30,19 @@ class TestLoto649DrawModel(unittest.TestCase):
         self.assertEqual(d.noroc, "0123456")
 
 
+class TestLoto649ParserNoroc(unittest.TestCase):
+    def test_parse_extracts_noroc_when_present(self):
+        html = Path("tests/fixtures/loto_649_with_noroc.html").read_text(encoding="utf-8")
+        draws = parse_loto_649_results(html)
+        by_date = {d.date: d for d in draws}
+        self.assertEqual(by_date["2026-01-15"].noroc, "0123456")
+
+    def test_parse_returns_none_when_noroc_absent(self):
+        html = Path("tests/fixtures/loto_649_with_noroc.html").read_text(encoding="utf-8")
+        draws = parse_loto_649_results(html)
+        by_date = {d.date: d for d in draws}
+        self.assertIsNone(by_date["2026-01-11"].noroc)
+
+
 if __name__ == "__main__":
     unittest.main()
