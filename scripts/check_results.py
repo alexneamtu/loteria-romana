@@ -25,6 +25,35 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+def parse_tickets_json(path: Path) -> list:
+    """Load tickets.json and return list of Ticket objects."""
+    from shared.ticket_io import load_tickets
+    doc = load_tickets(path)
+    return doc["tickets"]
+
+
+def score_side_game_match(game: str, ticket_side: str, winning_side: str | None) -> tuple[int, int]:
+    """Return (exact_match, digits_matched).
+
+    - joker: Noroc Plus is a bonus ball — match/no-match only. digits_matched == exact_match.
+    - loto_649 / loto_540: right-aligned digit match (loto.ro Noroc prize ladder scores
+      consecutive rightmost matching digits; digit count drives the prize tier).
+    """
+    if winning_side is None:
+        return 0, 0
+    if game == "joker":
+        exact = int(ticket_side == winning_side)
+        return exact, exact
+    matched = 0
+    for ch1, ch2 in zip(reversed(ticket_side), reversed(winning_side)):
+        if ch1 == ch2:
+            matched += 1
+        else:
+            break
+    exact = int(ticket_side == winning_side)
+    return exact, matched
+
+
 def parse_picks(text: str) -> list[list[int]]:
     """Parse picks from saved text format."""
     picks = []
@@ -168,6 +197,8 @@ def build_comparison_message(
 HISTORY_COLUMNS = [
     "date", "game", "strategy", "picks_count",
     "total_matches", "best_match", "match_total", "winning_numbers",
+    "ticket_id", "variants_count", "side_game_match", "side_game_digits",
+    "winning_side_game", "builder_name",
 ]
 
 
@@ -180,7 +211,7 @@ def append_history(
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(history_path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=HISTORY_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=HISTORY_COLUMNS, extrasaction="ignore")
         if not file_exists:
             writer.writeheader()
 
@@ -192,11 +223,17 @@ def append_history(
                     "date": draw_date,
                     "game": game_key,
                     "strategy": strategy,
-                    "picks_count": len(data["results"]),
+                    "picks_count": len(data.get("results", [])),
                     "total_matches": data["score"],
                     "best_match": data["best_match"],
                     "match_total": match_total,
                     "winning_numbers": winning_str,
+                    "ticket_id": data.get("ticket_id", ""),
+                    "variants_count": data.get("variants_count", ""),
+                    "side_game_match": data.get("side_game_match", ""),
+                    "side_game_digits": data.get("side_game_digits", ""),
+                    "winning_side_game": data.get("winning_side_game", ""),
+                    "builder_name": data.get("builder_name", ""),
                 })
 
     log(f"Appended results to {history_path}")
@@ -317,6 +354,42 @@ def process_game(
     return draw_date, winning_str, msg, strategy_results
 
 
+def _get_winning_side(game_key: str, draws) -> str | None:
+    """Extract winning side-game number from the latest draw."""
+    if not draws:
+        return None
+    latest = draws[-1]
+    if game_key == "joker":
+        return getattr(latest, "noroc_plus", None)
+    if game_key == "loto649":
+        return getattr(latest, "noroc", None)
+    if game_key == "loto540":
+        return getattr(latest, "super_noroc", None)
+    return None
+
+
+def _score_ticket_obj(ticket, winning_main, game_key: str, winning_side: str | None) -> dict:
+    """Score a Ticket object against winning numbers. Returns strategy_results entry."""
+    best_main = ticket.best_main_match(winning_main)
+    total_matches = sum(v.count_main_matches(winning_main) for v in ticket.variants)
+    # score_side_game_match uses ticket's game name (loto_649/loto_540), not legacy key
+    side_exact, side_digits = score_side_game_match(ticket.game, ticket.side_game_number, winning_side)
+    return {
+        "results": [
+            {"pick": list(v.main_numbers), "matched": sorted(set(v.main_numbers) & set(winning_main)), "count": v.count_main_matches(winning_main)}
+            for v in ticket.variants
+        ],
+        "score": total_matches,
+        "best_match": best_main,
+        "ticket_id": "",  # filled in per-ticket below
+        "variants_count": len(ticket.variants),
+        "side_game_match": side_exact,
+        "side_game_digits": side_digits,
+        "winning_side_game": winning_side or "",
+        "builder_name": ticket.strategy,
+    }
+
+
 def main():
     """Main entry point."""
     max_retries = int(os.environ.get("MAX_RETRIES", "3"))
@@ -331,6 +404,13 @@ def main():
 
     log("\n=== Processing Results ===")
 
+    # Map legacy game_key -> (draws, ticket_game_name)
+    game_draws_map = {
+        "joker": (joker_draws, "joker"),
+        "loto649": (loto_draws, "loto_649"),
+        "loto540": (loto540_draws, "loto_540"),
+    }
+
     games = [
         ("joker", "🃏", "JOKER", joker_draws, 5),
         ("loto649", "🎱", "LOTO 6/49", loto_draws, 6),
@@ -339,12 +419,55 @@ def main():
 
     history_path = Path(os.environ.get("HISTORY_CSV", "data/results/history.csv"))
 
+    # Prefer tickets.json over legacy .txt files
+    tickets_json_path = picks_dir / "tickets.json"
+    tickets_by_game: dict[str, list] = {}
+    if tickets_json_path.exists():
+        log(f"Loading tickets from {tickets_json_path}")
+        ticket_objs = parse_tickets_json(tickets_json_path)
+        for t in ticket_objs:
+            tickets_by_game.setdefault(t.game, []).append(t)
+
     all_game_results = []
     history_rows = []
     for game_key, emoji, game_label, draws, match_total in games:
-        draw_date, winning_str, msg, strategy_results = process_game(
-            game_key, emoji, game_label, draws, picks_dir, match_total,
-        )
+        draws_for_game, ticket_game_name = game_draws_map[game_key]
+        json_tickets = tickets_by_game.get(ticket_game_name, [])
+
+        if json_tickets:
+            # JSON path: score Ticket objects
+            if not draws_for_game:
+                log(f"No {game_label} draws available")
+                msg = f"{emoji} *{game_label} Results*\n_No results available_"
+                draw_date, winning_str, strategy_results = "N/A", "N/A", {}
+            else:
+                latest = draws_for_game[-1]
+                winning_main = latest.main_numbers
+                draw_date = str(latest.date)
+                if hasattr(latest, "joker"):
+                    winning_str = f"{', '.join(str(n) for n in winning_main)} + J{latest.joker}"
+                else:
+                    winning_str = ", ".join(str(n) for n in winning_main)
+                winning_side = _get_winning_side(game_key, draws_for_game)
+                log(f"Latest {game_label}: {draw_date} - {winning_str}")
+
+                strategy_results = {}
+                for idx, ticket in enumerate(json_tickets):
+                    data = _score_ticket_obj(ticket, winning_main, game_key, winning_side)
+                    strat_key = f"{ticket.strategy}_{idx}"
+                    data["ticket_id"] = f"{draw_date}-{game_key}-{ticket.strategy}-{idx}"
+                    strategy_results[strat_key] = data
+
+            msg = build_game_message(
+                emoji, game_label, winning_str, draw_date,
+                strategy_results, match_total,
+            )
+        else:
+            # Legacy .txt path
+            draw_date, winning_str, msg, strategy_results = process_game(
+                game_key, emoji, game_label, draws, picks_dir, match_total,
+            )
+
         (output_dir / f"{game_key}.txt").write_text(msg, encoding="utf-8")
         all_game_results.append((emoji, game_label, strategy_results, match_total))
         history_rows.append((draw_date, game_key, winning_str, strategy_results, match_total))

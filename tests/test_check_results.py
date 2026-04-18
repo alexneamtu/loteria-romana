@@ -127,3 +127,56 @@ class TestMainDBPersistenceHook(unittest.TestCase):
             self.assertEqual(kwargs["max_retries"], 3)
             self.assertEqual(kwargs["retry_delay_minutes"], 5)
             self.assertEqual(len(kwargs["history_rows"]), 3)
+
+
+class TestCheckResultsTicketsJSON(unittest.TestCase):
+    def test_parse_tickets_json(self):
+        import json
+        import tempfile
+        from scripts.check_results import parse_tickets_json
+        doc = {
+            "generated_at": "x",
+            "budget_ron": 70.0,
+            "total_cost_ron": 17.5,
+            "allocation": {"joker": 1, "loto_649": 0, "loto_540": 0},
+            "tickets": [{
+                "game": "joker",
+                "variants": [
+                    {"main_numbers": [3, 7, 12, 19, 28], "bonus_number": 11},
+                    {"main_numbers": [3, 7, 12, 19, 33], "bonus_number": 11},
+                ],
+                "side_game_number": "NP07",
+                "strategy": "core_share",
+                "cost_ron": 17.5,
+            }],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tickets.json"
+            path.write_text(json.dumps(doc))
+            tickets = parse_tickets_json(path)
+            self.assertEqual(len(tickets), 1)
+            self.assertEqual(tickets[0].game, "joker")
+            self.assertEqual(tickets[0].side_game_number, "NP07")
+
+    def test_score_ticket_full_side_game_match_joker(self):
+        from scripts.check_results import score_side_game_match
+        self.assertEqual(score_side_game_match("joker", "NP07", "NP07"), (1, 1))
+        self.assertEqual(score_side_game_match("joker", "NP07", "NP14"), (0, 0))
+        self.assertEqual(score_side_game_match("joker", "NP07", None), (0, 0))
+
+    def test_score_ticket_noroc_partial_digit_match(self):
+        from scripts.check_results import score_side_game_match
+        # last 4 digits match
+        self.assertEqual(score_side_game_match("loto_649", "1234567", "9994567"), (0, 4))
+
+    def test_score_ticket_noroc_exact_match(self):
+        from scripts.check_results import score_side_game_match
+        self.assertEqual(score_side_game_match("loto_649", "1234567", "1234567"), (1, 7))
+
+    def test_score_ticket_noroc_no_match(self):
+        from scripts.check_results import score_side_game_match
+        self.assertEqual(score_side_game_match("loto_649", "1234567", "9999999"), (0, 0))
+
+    def test_score_ticket_super_noroc_partial(self):
+        from scripts.check_results import score_side_game_match
+        self.assertEqual(score_side_game_match("loto_540", "123456", "999456"), (0, 3))
