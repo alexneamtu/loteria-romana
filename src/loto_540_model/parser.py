@@ -23,7 +23,10 @@ def parse_loto_540_results(html: str) -> list[Loto540Draw]:
         window_start = max(0, match.start() - 2000)
         window = html[window_start:match.start()]
 
-        # Find the nearest opening div tag to avoid mixing draws
+        # Trim back to the nearest opening <div so a late draw's window
+        # doesn't catch earlier draws' super-noroc digits (the main-number
+        # regex is tolerant of extras because it takes the last 6, but
+        # super-noroc requires exactly 6 matches within the current draw).
         last_div = window.rfind("<div")
         if last_div != -1:
             window = window[last_div:]
