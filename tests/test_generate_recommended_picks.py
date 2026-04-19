@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import subprocess
 import sys
@@ -10,6 +11,12 @@ from unittest import mock
 
 import scripts.generate_recommended_picks as recommended_script
 from shared.ticket_allocator import TicketAllocation
+
+
+# Subprocess-based tests spawn the real orchestrator end-to-end (loading
+# ~2500 draws, training sklearn strategies, auto-scraping live jackpots).
+# Each call is 1-2 min on CI. Gate behind SLOW_TESTS=1 so normal CI stays fast.
+SLOW_ENABLED = os.environ.get("SLOW_TESTS") == "1"
 
 
 class TestEVGate(unittest.TestCase):
@@ -111,6 +118,7 @@ class TestGenerationDBPersistenceHook(unittest.TestCase):
         self.assertEqual(kwargs["tickets"][0]["joker_number"], 7)
 
 
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run orchestrator subprocess tests")
 class TestGenerateTicketsJSON(unittest.TestCase):
     def test_emits_tickets_json_with_expected_allocation_at_70_ron(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -171,6 +179,7 @@ class TestGenerateTicketsJSON(unittest.TestCase):
             self.assertEqual(list(out.glob("*.txt")), [])
 
 
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run orchestrator subprocess tests")
 class TestEVSkipBoost(unittest.TestCase):
     def test_skip_when_all_ratios_below_skip_ratio(self):
         import json, subprocess, sys, tempfile

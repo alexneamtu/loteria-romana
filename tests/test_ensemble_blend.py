@@ -1,3 +1,4 @@
+import os
 import random
 import unittest
 
@@ -13,6 +14,14 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
+
+
+# Integration-style tests that walk-forward-score every strategy on real
+# historical draws. Each `generate_blended_picks` call trains sklearn
+# gradient_boost / bayesian / genetic / frequency / random on the prefix;
+# a single call is ~30s with sklearn installed. Skip on regular CI; opt in
+# with SLOW_TESTS=1.
+SLOW_ENABLED = os.environ.get("SLOW_TESTS") == "1"
 
 
 class TestAllocateCounts(unittest.TestCase):
@@ -46,6 +55,7 @@ class TestScoreRandom(unittest.TestCase):
         self.assertGreaterEqual(score, 0)
 
 
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run the real blending pipeline")
 class TestGenerateBlendedPicks(unittest.TestCase):
     def _make_draws(self, config, count=20):
         rng = random.Random(0)
@@ -104,6 +114,7 @@ class TestGenerateBlendedPicks(unittest.TestCase):
         self.assertEqual(lines1, lines2)
 
 
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run the real blending pipeline")
 class TestBlendedPicksWithNewStrategies(unittest.TestCase):
     def _make_draws(self, config, count=50):
         rng = random.Random(0)
@@ -121,6 +132,7 @@ class TestBlendedPicksWithNewStrategies(unittest.TestCase):
 
 
 @unittest.skipUnless(TORCH_AVAILABLE, "PyTorch not installed")
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run the real blending pipeline")
 class TestDeepLearningBlend(unittest.TestCase):
     def test_blend_includes_deep_learning(self):
         """Ensemble should include deep learning strategies when PyTorch available."""
@@ -136,6 +148,7 @@ class TestDeepLearningBlend(unittest.TestCase):
             self.assertEqual(len(pick), 3)
 
 
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run the real blending pipeline")
 class TestEnhancedBiasIntegration(unittest.TestCase):
     def _make_draws(self, config, count=50):
         rng = random.Random(0)
@@ -158,6 +171,7 @@ class TestEnhancedBiasIntegration(unittest.TestCase):
             self.assertTrue(all(n in JOKER_CONFIG.pool_range for n in line))
 
 
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run the real blending pipeline")
 class TestPortfolioOptimizedPicks(unittest.TestCase):
     def _make_draws(self, config, count=50):
         rng = random.Random(0)
@@ -189,6 +203,7 @@ class TestPortfolioOptimizedPicks(unittest.TestCase):
 
 
 @unittest.skipUnless(TORCH_AVAILABLE, "PyTorch not installed")
+@unittest.skipUnless(SLOW_ENABLED, "set SLOW_TESTS=1 to run the real blending pipeline")
 class TestRLBlendIntegration(unittest.TestCase):
     def _make_draws(self, config, count=50):
         rng = random.Random(0)
