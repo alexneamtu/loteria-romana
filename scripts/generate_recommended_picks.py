@@ -294,12 +294,11 @@ def apply_ev_gate(
     if not enabled:
         return allocation, {}
 
-    from shared.pricing import compute_ticket_cost as _cost
     calc = EVCalculator()
     games = {
-        "joker": calc.create_joker(ticket_cost=_cost("joker")),
-        "loto_649": calc.create_loto_649(ticket_cost=_cost("loto_649")),
-        "loto_540": calc.create_loto_540(ticket_cost=_cost("loto_540")),
+        "joker": calc.create_joker(),
+        "loto_649": calc.create_loto_649(),
+        "loto_540": calc.create_loto_540(),
     }
 
     details: dict[str, dict[str, float | bool]] = {}
