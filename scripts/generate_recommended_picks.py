@@ -377,6 +377,20 @@ def main():
         "loto_540": args.loto540_jackpot,
     }
 
+    # Auto-fetch jackpots when the EV gate is enabled and any value is missing.
+    # CLI args take precedence; scraper fills only the gaps.
+    if args.ev_gate and any(v is None for v in jackpots.values()):
+        from shared.jackpot_scraper import fetch_jackpots
+
+        print("EV gate enabled; fetching current jackpots from loto.ro...")
+        scraped = fetch_jackpots()
+        for game, value in scraped.items():
+            if jackpots[game] is None and value is not None:
+                jackpots[game] = value
+                print(f"  {game}: {value:,.0f} RON (scraped)")
+            elif jackpots[game] is None:
+                print(f"  {game}: unavailable (scraper returned None)")
+
     output_dir = Path(args.output_dir) if args.output_dir else None
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -395,6 +409,13 @@ def main():
         if decision.action == "skip":
             ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=decision.reason)
             print(f"EV gate: SKIP — {decision.reason}. Ledger balance: {ledger.balance():.2f} RON")
+            if output_dir:
+                skip_msg = (
+                    f"🎰 *Lottery Picks - {draw_date}*\n\n"
+                    f"_Skipped: {decision.reason}_\n"
+                    f"Ledger balance: {ledger.balance():.2f} RON\n"
+                )
+                (output_dir / "skip_notice.txt").write_text(skip_msg, encoding="utf-8")
             persist_generation_run(
                 budget=args.budget,
                 seed=args.seed,
