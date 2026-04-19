@@ -1,0 +1,11 @@
+{
+  "balance": 70.0,
+  "entries": [
+    {
+      "kind": "credit",
+      "draw_date": "2026-04-19",
+      "amount": 70.0,
+      "reason": "all ratios < 0.5"
+    }
+  ]
+}
