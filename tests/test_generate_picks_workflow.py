@@ -43,3 +43,9 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertIn("TELEGRAM_BOT_TOKEN", self.text)
         self.assertIn("TELEGRAM_CHAT_ID", self.text)
         self.assertIn("curl", self.text)
+
+    def test_ledger_is_committed_to_repo(self):
+        # Ledger must persist across scheduled runs via a git commit.
+        self.assertIn("Commit budget ledger", self.text)
+        self.assertIn("data/budget_bank.json", self.text)
+        self.assertIn("contents: write", self.text)

@@ -106,7 +106,7 @@ def build_parser():
         help="Boost budget from ledger if any game's ratio > this",
     )
     parser.add_argument(
-        "--ledger-path", type=str, default="picks/budget_bank.json",
+        "--ledger-path", type=str, default="data/budget_bank.json",
         help="Path to budget ledger JSON file",
     )
     return parser
