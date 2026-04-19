@@ -17,7 +17,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from shared.ticket_allocator import TicketAllocation, best_allocation, enumerate_allocations
+from shared.ticket_allocator import (
+    TicketAllocation,
+    best_allocation,
+    best_per_game_allocation,
+    enumerate_allocations,
+)
 from shared.ticket_builders import (
     BuilderContext,
     CoreShareBuilder,
@@ -46,7 +51,15 @@ def build_parser():
     )
     parser.add_argument(
         "--budget", type=float, required=True,
-        help="Budget in RON",
+        help="Budget in RON (also the ledger credit on skip, debit cap on boost)",
+    )
+    parser.add_argument(
+        "--bucket-budget", type=str, default=None,
+        help=(
+            "Per-game budget split, e.g. 'joker=20,loto_649=30,loto_540=20'. "
+            "Runs the allocator independently per game so non-dominant games "
+            "get exercised in production. Sum should not exceed --budget."
+        ),
     )
     parser.add_argument(
         "--seed", type=int, help="Set deterministic RNG seed",
@@ -121,6 +134,33 @@ def load_joker_draws():
     csv_path = Path("data/clean/joker_draws.csv")
     update_dataset(url, cache_path, csv_path)
     return load_draws(csv_path)
+
+
+def _parse_bucket_budget(raw: str | None) -> dict[str, float] | None:
+    """Parse `--bucket-budget` like 'joker=20,loto_649=30,loto_540=25' into a dict.
+
+    Returns None when the flag is unset. Unknown games raise SystemExit so
+    typos fail loudly rather than silently falling through to all-Joker.
+    """
+    if raw is None or not raw.strip():
+        return None
+    known = {"joker", "loto_649", "loto_540"}
+    out: dict[str, float] = {}
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise SystemExit(f"--bucket-budget entry {part!r} must be 'game=amount'")
+        game, amount = part.split("=", 1)
+        game = game.strip()
+        if game not in known:
+            raise SystemExit(f"--bucket-budget unknown game {game!r}; known: {sorted(known)}")
+        try:
+            out[game] = float(amount)
+        except ValueError as exc:
+            raise SystemExit(f"--bucket-budget amount {amount!r} is not numeric") from exc
+    return out
 
 
 def load_loto_649_draws():
@@ -494,7 +534,11 @@ def main():
             tickets=all_db_rows,
         )
     else:
-        allocation = best_allocation(budget_ron=effective_budget)
+        buckets = _parse_bucket_budget(args.bucket_budget)
+        if buckets is not None:
+            allocation = best_per_game_allocation(buckets)
+        else:
+            allocation = best_allocation(budget_ron=effective_budget)
         allocation, gate_details = apply_ev_gate(
             allocation=allocation,
             enabled=args.ev_gate,

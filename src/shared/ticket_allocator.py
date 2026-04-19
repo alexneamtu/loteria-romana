@@ -125,3 +125,32 @@ def best_allocation(
             a.total_cost,
         ),
     )
+
+
+def best_per_game_allocation(
+    budget_buckets: dict[str, float],
+) -> TicketAllocation:
+    """Independent per-game allocation with separate budgets.
+
+    Each game's bucket is spent on that game alone — the allocator runs
+    per-bucket with `allowed_games={game}`. The combined result preserves
+    each game's picks and sums the costs.
+
+    This trades `P(any win)` for production coverage of strategies that
+    don't dominate on per-RON probability (CoreShare on 6/49, Wheel on 5/40
+    etc.), so we accumulate real data on them instead of always buying the
+    cheapest-per-probability game.
+    """
+    tickets: dict[str, int] = {g: 0 for g in _GAMES}
+    total_cost = 0.0
+    for game, bucket in budget_buckets.items():
+        if game not in _GAMES or bucket <= 0:
+            continue
+        sub = best_allocation(budget_ron=bucket, allowed_games={game})
+        tickets[game] = sub.tickets.get(game, 0)
+        total_cost += sub.total_cost
+    return TicketAllocation(
+        tickets=tickets,
+        total_cost=round(total_cost, 2),
+        p_any_win=_p_any_win(tickets),
+    )
