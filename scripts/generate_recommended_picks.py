@@ -350,34 +350,49 @@ def apply_ev_gate_v2(
     skip_ratio: float,
     boost_ratio: float,
 ) -> EVDecision:
-    """Compute per-game jackpot/breakeven ratios and decide skip/boost/play."""
-    from shared.pricing import compute_ticket_cost as _cost
+    """Compute per-game jackpot/breakeven ratios and decide skip/boost/play.
+
+    Uses each game's EV-tier ticket cost (main ticket only — side games
+    have separate prize ladders not modeled by EVCalculator) so the
+    breakeven reflects the prize tiers we actually score against.
+    """
     calc = EVCalculator()
     games = {
-        "joker": calc.create_joker(ticket_cost=_cost("joker")),
-        "loto_649": calc.create_loto_649(ticket_cost=_cost("loto_649")),
-        "loto_540": calc.create_loto_540(ticket_cost=_cost("loto_540")),
+        "joker": calc.create_joker(),
+        "loto_649": calc.create_loto_649(),
+        "loto_540": calc.create_loto_540(),
     }
     ratios: dict[str, float] = {}
+    breakevens: dict[str, float] = {}
     for game_name, game in games.items():
         jackpot = jackpots.get(game_name)
         breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        breakevens[game_name] = float(breakeven or 0)
         if jackpot is None or breakeven is None or breakeven <= 0:
             ratios[game_name] = 0.0
         else:
             ratios[game_name] = jackpot / breakeven
 
     max_ratio = max(ratios.values())
+    ratio_summary = "  ".join(
+        f"{g}={ratios[g]:.2f}" for g in ("joker", "loto_649", "loto_540")
+    )
 
     if max_ratio < skip_ratio:
-        return EVDecision(action="skip", reason=f"all ratios < {skip_ratio}")
+        return EVDecision(
+            action="skip",
+            reason=f"all ratios < {skip_ratio} ({ratio_summary})",
+        )
     if max_ratio > boost_ratio:
         return EVDecision(
             action="boost",
-            reason=f"max ratio {max_ratio:.2f} > {boost_ratio}",
+            reason=f"max ratio {max_ratio:.2f} > {boost_ratio} ({ratio_summary})",
             extra_budget=budget,
         )
-    return EVDecision(action="play", reason=f"ratios OK (max {max_ratio:.2f})")
+    return EVDecision(
+        action="play",
+        reason=f"ratios OK (max {max_ratio:.2f}) ({ratio_summary})",
+    )
 
 
 def _top_n_diverse_allocations(budget_ron: float, n: int) -> list[TicketAllocation]:

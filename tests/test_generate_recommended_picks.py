@@ -60,6 +60,72 @@ class TestEVGate(unittest.TestCase):
         self.assertIn("loto_649", details)
 
 
+class TestApplyEVGateV2(unittest.TestCase):
+    # Breakevens from EVCalculator with main-ticket-only costs:
+    # joker ≈ 346M, loto_649 ≈ 337M, loto_540 ≈ 2.23M.
+    SKIP_RATIO = 0.5
+    BOOST_RATIO = 1.2
+
+    def test_skip_when_all_ratios_below_threshold(self):
+        decision = recommended_script.apply_ev_gate_v2(
+            budget=40.0,
+            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": 500_000.0},
+            skip_ratio=self.SKIP_RATIO,
+            boost_ratio=self.BOOST_RATIO,
+        )
+        self.assertEqual(decision.action, "skip")
+        self.assertIn("joker=", decision.reason)
+        self.assertIn("loto_649=", decision.reason)
+        self.assertIn("loto_540=", decision.reason)
+
+    def test_play_when_some_ratio_in_band(self):
+        # loto_540 jackpot = ~1.8M (ratio ~0.8 vs ~2.23M breakeven)
+        decision = recommended_script.apply_ev_gate_v2(
+            budget=40.0,
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 1_800_000.0},
+            skip_ratio=self.SKIP_RATIO,
+            boost_ratio=self.BOOST_RATIO,
+        )
+        self.assertEqual(decision.action, "play")
+        self.assertIn("loto_540=", decision.reason)
+
+    def test_boost_when_max_ratio_above_threshold(self):
+        # loto_540 jackpot = ~3.5M (ratio ~1.57 vs ~2.23M breakeven)
+        decision = recommended_script.apply_ev_gate_v2(
+            budget=40.0,
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+            skip_ratio=self.SKIP_RATIO,
+            boost_ratio=self.BOOST_RATIO,
+        )
+        self.assertEqual(decision.action, "boost")
+        self.assertEqual(decision.extra_budget, 40.0)
+        self.assertIn("loto_540=", decision.reason)
+
+    def test_joker_uses_main_ticket_cost_not_bundled(self):
+        # Joker jackpot = 200M. With main-ticket-only breakeven (~346M),
+        # ratio ≈ 0.58 → play. If the gate accidentally used the full
+        # ticket cost (17.5 incl. Noroc Plus), breakeven would balloon
+        # to ~427M and ratio would be 0.47 → skip. Guard against that
+        # regression.
+        decision = recommended_script.apply_ev_gate_v2(
+            budget=40.0,
+            jackpots={"joker": 200_000_000.0, "loto_649": 1.0, "loto_540": 1.0},
+            skip_ratio=self.SKIP_RATIO,
+            boost_ratio=self.BOOST_RATIO,
+        )
+        self.assertEqual(decision.action, "play")
+
+    def test_missing_jackpot_treated_as_zero_ratio(self):
+        decision = recommended_script.apply_ev_gate_v2(
+            budget=40.0,
+            jackpots={"joker": None, "loto_649": None, "loto_540": None},
+            skip_ratio=self.SKIP_RATIO,
+            boost_ratio=self.BOOST_RATIO,
+        )
+        self.assertEqual(decision.action, "skip")
+        self.assertIn("joker=0.00", decision.reason)
+
+
 class TestGenerationDBPersistenceHook(unittest.TestCase):
     def test_main_persists_even_when_allocation_has_zero_win_probability(self):
         zero_allocation = TicketAllocation(
