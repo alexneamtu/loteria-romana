@@ -16,7 +16,8 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
 
     def test_default_budget_present(self):
         self.assertIn("default: '70'", self.text)
-        self.assertIn("default: 'false'", self.text)
+        # ev_gate defaults ON so scheduled runs get the scraped-jackpot path.
+        self.assertIn("default: 'true'", self.text)
 
     def test_database_env_and_driver_present(self):
         self.assertIn("DATABASE_URL", self.text)
@@ -33,7 +34,9 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
 
     def test_telegram_step_uses_file_existence_check(self):
         self.assertIn('if [ ! -f picks/tickets.json ]', self.text)
-        self.assertIn('No tickets.json emitted', self.text)
+        # Skip path now prefers picks/skip_notice.txt written by the orchestrator.
+        self.assertIn('skip_notice.txt', self.text)
+        self.assertIn('no tickets emitted', self.text)
 
     def test_telegram_step_sends_messages(self):
         self.assertIn("workflow_messages.py", self.text)
