@@ -39,7 +39,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
   generate-picks:
@@ -166,3 +166,16 @@ jobs:
                 --data-urlencode "text=${msg}" \
                 -d parse_mode=Markdown > /dev/null
             done
+
+      - name: Commit budget ledger
+        if: always()
+        run: |
+          if [ ! -f data/budget_bank.json ]; then
+            echo "no ledger file; skipping commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/budget_bank.json
+          git diff --staged --quiet || git commit -m "chore: update budget ledger"
+          git push
