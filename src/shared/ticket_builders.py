@@ -147,9 +147,20 @@ def _top_k_from_signal(
 
 
 class CoreShareBuilder:
-    """All variants share a top-K core; petals rotate through pool of M."""
+    """All variants share a top-K core; petals rotate through pool of M.
+
+    When `anti_crowding=True`, candidate variants are resampled (up to a
+    fixed budget) and the one with the highest `anti_crowding_score` wins.
+    This raises `E[payout | pari-mutuel jackpot win]` by reducing expected
+    co-winners. Has zero effect on fixed-prize tiers and zero effect on
+    P(win). Opt-in to keep backtest-validated behavior as the default.
+    """
 
     strategy = "core_share"
+
+    def __init__(self, anti_crowding: bool = False, anti_crowding_candidates: int = 12):
+        self.anti_crowding = anti_crowding
+        self.anti_crowding_candidates = max(1, anti_crowding_candidates)
 
     def build(self, ctx: BuilderContext) -> list[Ticket]:
         core_k = _CORE_K[ctx.game]
@@ -171,14 +182,7 @@ class CoreShareBuilder:
         attempts = 0
         while len(variants_picks) < variants_per and attempts < variants_per * 20:
             attempts += 1
-            petals = ctx.rng.sample(petal_pool, k=min(slots_per_variant, len(petal_pool)))
-            if len(petals) < slots_per_variant:
-                extra_pool = [
-                    n for n in ctx.config.pool_range
-                    if n not in core and n not in petals
-                ]
-                petals.extend(ctx.rng.sample(extra_pool, slots_per_variant - len(petals)))
-            full = tuple(sorted(core + petals))
+            full = self._sample_variant(ctx, core, petal_pool, slots_per_variant, per_variant)
             if full in seen:
                 continue
             seen.add(full)
@@ -190,6 +194,38 @@ class CoreShareBuilder:
 
         variants = _make_variants(ctx, variants_picks)
         return [_make_ticket(ctx, variants, self.strategy)]
+
+    def _sample_variant(
+        self,
+        ctx: BuilderContext,
+        core: list[int],
+        petal_pool: list[int],
+        slots_per_variant: int,
+        per_variant: int,
+    ) -> tuple[int, ...]:
+        """Sample one full variant. With anti_crowding, picks the best of N."""
+        candidate_count = self.anti_crowding_candidates if self.anti_crowding else 1
+        best: tuple[int, ...] | None = None
+        best_score = -1.0
+        pool_size = ctx.config.pool_size
+        for _ in range(candidate_count):
+            petals = ctx.rng.sample(petal_pool, k=min(slots_per_variant, len(petal_pool)))
+            if len(petals) < slots_per_variant:
+                extra_pool = [
+                    n for n in ctx.config.pool_range
+                    if n not in core and n not in petals
+                ]
+                petals.extend(ctx.rng.sample(extra_pool, slots_per_variant - len(petals)))
+            full = tuple(sorted(core + petals))
+            if not self.anti_crowding:
+                return full
+            from .crowding import anti_crowding_score
+            score = anti_crowding_score(list(full), pool_size)
+            if score > best_score:
+                best_score = score
+                best = full
+        assert best is not None
+        return best
 
 
 class WheelBuilder:

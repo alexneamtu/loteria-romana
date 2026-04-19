@@ -192,6 +192,62 @@ class TestCoreShareBuilder(unittest.TestCase):
         self.assertEqual(t1.variants[0].main_numbers, t2.variants[0].main_numbers)
 
 
+class TestCoreShareAntiCrowding(unittest.TestCase):
+    def _make_ctx(self, game="loto_649", seed=42):
+        draws_by_game = {"joker": _joker_draws, "loto_649": _649_draws, "loto_540": _540_draws}
+        config_by_game = {"joker": JOKER_CONFIG, "loto_649": LOTO_649_CONFIG, "loto_540": LOTO_540_CONFIG}
+        return BuilderContext(
+            game=game,
+            config=config_by_game[game],
+            draws=draws_by_game[game](),
+            draw_dates=None,
+            rng=random.Random(seed),
+        )
+
+    def test_anti_crowding_off_by_default(self):
+        builder = CoreShareBuilder()
+        self.assertFalse(builder.anti_crowding)
+
+    def test_anti_crowding_on_raises_average_score(self):
+        # Over enough samples, anti_crowding should yield a higher mean score
+        # than the default. Single-ticket variance is high; average 20 tickets.
+        from shared.crowding import anti_crowding_score
+
+        base_scores: list[float] = []
+        acr_scores: list[float] = []
+        for seed in range(20):
+            ctx_base = self._make_ctx(seed=seed)
+            ctx_acr = self._make_ctx(seed=seed)
+            t_base = CoreShareBuilder().build(ctx_base)[0]
+            t_acr = CoreShareBuilder(anti_crowding=True, anti_crowding_candidates=8).build(ctx_acr)[0]
+            for v in t_base.variants:
+                base_scores.append(anti_crowding_score(list(v.main_numbers), ctx_base.config.pool_size))
+            for v in t_acr.variants:
+                acr_scores.append(anti_crowding_score(list(v.main_numbers), ctx_acr.config.pool_size))
+        base_mean = sum(base_scores) / len(base_scores)
+        acr_mean = sum(acr_scores) / len(acr_scores)
+        self.assertGreater(acr_mean, base_mean)
+
+    def test_anti_crowding_preserves_core_share_invariant(self):
+        # Even with anti-crowding on, all variants must still share the core.
+        ctx = self._make_ctx(game="loto_649", seed=7)
+        t = CoreShareBuilder(anti_crowding=True).build(ctx)[0]
+        shared = set(t.variants[0].main_numbers)
+        for v in t.variants[1:]:
+            shared &= set(v.main_numbers)
+        self.assertGreaterEqual(len(shared), 4)  # _CORE_K["loto_649"] = 4
+
+    def test_anti_crowding_seeded_is_deterministic(self):
+        ctx1 = self._make_ctx(game="joker", seed=99)
+        ctx2 = self._make_ctx(game="joker", seed=99)
+        t1 = CoreShareBuilder(anti_crowding=True).build(ctx1)[0]
+        t2 = CoreShareBuilder(anti_crowding=True).build(ctx2)[0]
+        self.assertEqual(
+            [v.main_numbers for v in t1.variants],
+            [v.main_numbers for v in t2.variants],
+        )
+
+
 class TestWheelBuilder(unittest.TestCase):
     def test_joker_wheel_produces_2_variants_covering_pool(self):
         ctx = BuilderContext(
