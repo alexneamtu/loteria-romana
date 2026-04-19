@@ -40,7 +40,7 @@ Every scheduled run scrapes the current jackpots from the loto.ro homepage and c
 - `0.5 ≤ ratio ≤ 1.2` → play normally at the scheduled budget.
 - `ratio > 1.2` (boost threshold) → debit the ledger to increase the effective budget on high-EV rollovers.
 
-The ledger persists at `data/budget_bank.json` and is committed on every run. A skipped run posts a short Telegram notice showing the current balance.
+Breakeven is computed from the **main-ticket cost only** (variants + processing fee) — side-game stakes have separate prize ladders not scored by the EV model. Each skip/play/boost decision includes the per-game ratios in its reason (e.g. `all ratios < 0.5 (joker=0.19  loto_649=0.05  loto_540=0.28)`), so the Telegram notice explains *why* the gate fired. The ledger persists at `data/budget_bank.json` and is committed on every run.
 
 ## Strategies
 
@@ -114,6 +114,7 @@ The scheduled workflow invokes `scripts/generate_recommended_picks.py`. Common f
 | Flag | Default | Purpose |
 |---|---|---|
 | `--budget` | required | Budget in RON. Allocator picks a ticket combination that fits. |
+| `--bucket-budget` | unset | Per-game split, e.g. `joker=20,loto_649=30,loto_540=20`. Runs the allocator independently per game so non-dominant games still get exercised. |
 | `--strategy` | `independent` | `independent` \| `core_share` \| `wheel:<pool_size>` |
 | `--mixes` | `1` | Emit N diverse allocations as `tickets_mix{i}.json` |
 | `--seed` | unset | RNG seed for reproducibility |
@@ -236,6 +237,6 @@ data/
 
 - Lottery outcomes are random; no model improves win probability.
 - The backtest signal on current history (1000–1200 draws per game) is **not statistically significant**. CoreShare and Wheel show directional jackpot-tilt vs Independent but sample size is too small for conclusive claims.
-- At the default 70 RON budget the allocator picks all-Joker (it dominates `P(any win) / RON` by 3–50×). CoreShare / Wheel only run in production if you pass `--strategy core_share` or add a future `--min-per-game` flag.
-- Anti-crowding (playing unpopular numbers to split the jackpot less when winning) is implemented but not yet wired into the main builders.
+- At the default 70 RON budget the allocator picks all-Joker (it dominates `P(any win) / RON` by 3–50×). Use `--bucket-budget joker=X,loto_649=Y,loto_540=Z` to force coverage of non-dominant games.
+- Anti-crowding (playing unpopular numbers to split the jackpot less when winning) is available as an opt-in flag on `CoreShareBuilder(anti_crowding=True)` — off by default to keep backtest-validated behavior.
 - Treat any spending as entertainment, not investment. Under normal jackpot conditions the EV gate will skip most scheduled runs — that is the mathematically correct behavior.
