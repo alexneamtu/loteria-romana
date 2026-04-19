@@ -1,334 +1,241 @@
-# Loteria Romana - Lottery Modeling Pipelines
+# Loteria Romana — Lottery Modeling Pipeline
 
-A loto.ro-only research pipeline that ingests historical results, stores clean datasets, and generates weekly lines using multiple strategies including statistical analysis, neural networks, ensemble methods, and wheeling systems. The goal is transparent experimentation, not guaranteed wins.
+A loto.ro-only research pipeline that ingests historical results, stores clean datasets, generates picks for Joker / Loto 6/49 / Loto 5/40, and posts them to Telegram on a schedule. The goal is transparent experimentation and honest measurement — not guaranteed wins.
 
 ## What this is / isn't
 
-- This is a loto.ro-only pipeline for Joker, Loto 6/49, and Loto 5/40.
-- It is an experiment in sampling strategies and statistical modeling.
-- It does not improve expected value; lottery outcomes remain random.
-- It is not a predictor and not financial advice.
+- Covers **Joker**, **Loto 6/49**, and **Loto 5/40** on loto.ro.
+- Experiments with sampling strategies, wheeling, and EV-aware budget gating.
+- Does **not** improve win probability — lottery draws are random.
+- Not a predictor, not financial advice.
 
-## Documentation
+## How it works (high level)
 
-For comprehensive documentation on lottery prediction methods, statistical analysis, and implementation details, see the [docs/](docs/README.md) directory:
+Two GitHub Actions workflows run the whole pipeline:
 
-- [Introduction to Lottery Prediction](docs/01-introduction.md) - Odds, expected value, and fundamentals
-- [Statistical Methods](docs/02-statistical-methods.md) - Classical approaches and their limitations
-- [Machine Learning Methods](docs/03-machine-learning-methods.md) - Neural networks and why they don't work
-- [Wheeling Systems](docs/04-wheeling-systems.md) - The only mathematically guaranteed approach
-- [Loto.ro Specific Analysis](docs/05-loto-ro-specific.md) - Romanian lottery rules and data
-- [Implementation Guide](docs/06-implementation-guide.md) - How to use this codebase
-- [Backtesting Results](docs/07-backtesting-results.md) - Strategy comparison data
-- [Honest Assessment](docs/08-honest-assessment.md) - Limitations and realistic expectations
+| Workflow | Schedule | Purpose |
+|---|---|---|
+| `generate-picks.yml` | Sun + Thu at 10:00 UTC | Scrape current jackpots, run EV gate, generate ticket(s), post to Telegram |
+| `check-results.yml` | Mon + Fri at 09:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
 
-## Scope
+Both commit their artifacts back to `main` so historical state survives across runs.
 
-- Target games:
-  - **Joker** (main numbers 1-45, Joker 1-20)
-  - **Loto 6/49** (main numbers 1-49)
-  - **Loto 5/40** (6 numbers drawn from 1-40, player picks 5)
-- Data source: official results pages on loto.ro.
-- Out of scope: other lotteries/games.
+## Ticket structure
 
-## Odds & Prize Tiers
+A real loto.ro ticket is N variants + an optional side game:
 
-Odds are fixed by the game rules and are not influenced by historical data or any model.
+| Game | Variant | Variants/ticket | Side game | Side stake | Processing fee | **Full ticket** |
+|---|---|---|---|---|---|---|
+| Joker | 5 from 1–45 + 1 Joker from 1–20 | 2 | Noroc Plus | 3.0 RON | 0.5 RON | **17.5 RON** |
+| Loto 6/49 | 6 from 1–49 | 3 | Noroc (7-digit) | 4.0 RON | 0.5 RON | **28.5 RON** |
+| Loto 5/40 | 5 from 1–40 | 4 | Super Noroc (6-digit) | 2.0 RON | 0.5 RON | **22.5 RON** |
 
-### Simplified Win Rules
+The orchestrator emits one `picks/tickets.json` per run with the allocation, variants, and side-game number. The Telegram formatter renders one message per physical ticket grouped with its side game.
 
-| Game      | You win when...                                                                                |
-|-----------|------------------------------------------------------------------------------------------------|
-| Loto 6/49 | Match at least 3 of the 6 drawn numbers.                                                       |
-| Loto 5/40 | Match at least 3 of your 5 numbers among the 6 drawn numbers.                                  |
-| Joker     | Match 3+ main numbers, or match the Joker number with any count of main numbers (including 0). |
+## EV gate
 
-### Loto 6/49 Prize Tiers
+Every scheduled run scrapes the current jackpots from the loto.ro homepage and computes `ratio = jackpot / breakeven` per game, where **breakeven** is the jackpot amount at which a ticket's expected value crosses zero.
 
-| Category | Match rule   | Odds            | Chance    |
-|----------|--------------|-----------------|-----------|
-| I (6)    | Match 6 of 6 | 1 in 13,983,816 | 0.000007% |
-| II (5)   | Match 5 of 6 | 1 in 54,201     | 0.001845% |
-| III (4)  | Match 4 of 6 | 1 in 1,032      | 0.096862% |
-| IV (3)   | Match 3 of 6 | 1 in 57         | 1.765040% |
+- `ratio < 0.5` (skip threshold) → no tickets, credit the day's budget to the ledger.
+- `0.5 ≤ ratio ≤ 1.2` → play normally at the scheduled budget.
+- `ratio > 1.2` (boost threshold) → debit the ledger to increase the effective budget on high-EV rollovers.
 
-Any prize: 1 in 54 (1.863755%). Jackpot: 1 in 13,983,816 (0.000007%).
+The ledger persists at `data/budget_bank.json` and is committed on every run. A skipped run posts a short Telegram notice showing the current balance.
 
-### Loto 5/40 Prize Tiers
+## Strategies
 
-| Category | Match rule                  | Odds         | Chance    |
-|----------|-----------------------------|--------------|-----------|
-| I (5)    | Match 5 of 5 (from 6 drawn) | 1 in 109,668 | 0.000912% |
-| II (4)   | Match 4 of 5                | 1 in 1,290   | 0.077507% |
-| III (3)  | Match 3 of 5                | 1 in 59      | 1.705146% |
+Ticket builders (in `src/shared/ticket_builders.py`):
 
-Any prize: 1 in 56 (1.783565%). Jackpot: 1 in 109,668 (0.000912%).
+- **IndependentBuilder** (default) — each variant is an independent blended-picks draw. Status-quo baseline.
+- **CoreShareBuilder** — all variants in a ticket share a high-signal "core" of K numbers; remaining slots rotate through a petal pool. Concentrates variance into the jackpot tail.
+- **WheelBuilder** — abbreviated covering wheel over a pool of K numbers. Guarantees N-match coverage if enough pool numbers are drawn.
 
-### Joker Prize Tiers
+`generate_blended_picks` in `shared.ensemble_blend` scores multiple non-torch strategies (frequency, Bayesian, cooccurrence, genetic, markov, gradient boost) via walk-forward backtest and allocates picks proportionally. Torch-backed strategies (LSTM / TCN / Transformer / NF / RL) are imported but skipped in production via `DISABLE_TORCH_STRATEGIES=1` — backtests showed no measurable edge.
 
-| Category   | Match rule           | Odds            | Chance    |
-|------------|----------------------|-----------------|-----------|
-| I (5+J)    | Match 5 main + Joker | 1 in 24,435,180 | 0.000004% |
-| II (5)     | Match 5 main         | 1 in 1,286,062  | 0.000078% |
-| III (4+J)  | Match 4 main + Joker | 1 in 122,176    | 0.000818% |
-| IV (4)     | Match 4 main         | 1 in 6,430      | 0.015551% |
-| V (3+J)    | Match 3 main + Joker | 1 in 3,133      | 0.031921% |
-| VI (3)     | Match 3 main         | 1 in 165        | 0.606503% |
-| VII (2+J)  | Match 2 main + Joker | 1 in 247        | 0.404335% |
-| VIII (1+J) | Match 1 main + Joker | 1 in 53         | 1.870050% |
-| IX (0+J)   | Match Joker only     | 1 in 37         | 2.692872% |
+Wheeling and anti-crowding helpers live in `shared.wheeling` and `shared.crowding` respectively and are wired into the builders above.
 
-Any prize: 1 in 18 (5.622132%). Jackpot: 1 in 24,435,180 (0.000004%).
+## Odds & prize tiers (game rules, unchanged)
 
-## Features
+Odds are fixed by the games. No model changes them.
 
-### Advanced Strategies (Recommended)
-- **Smart** - combines all techniques for maximum accuracy (default)
-- **Optimal** - composite scoring with frequency, recency, gaps, and trends
-- **Coverage** - maximizes number diversity across picks
-- **Pattern** - matches historical sum, odd/even, and high/low patterns
+### Loto 6/49
 
-### Statistical Strategies
-- **Delta Analysis** - generates numbers based on historical delta (gap) distributions
-- **Hot/Cold Numbers** - time-weighted frequency with exponential decay
-- **Pair Correlation** - tracks which number pairs appear together frequently
-- **Skip/Gap Analysis** - favors "overdue" numbers based on expected gaps
-- **Sum Constraints** - filters lines by total sum within historical range
-- **Balance Strategy** - matches historical odd/even and high/low ratios
+| Category | Match | Odds | Chance |
+|---|---|---|---|
+| I (jackpot) | 6 of 6 | 1 in 13,983,816 | 0.000007% |
+| II | 5 of 6 | 1 in 54,201 | 0.001845% |
+| III | 4 of 6 | 1 in 1,032 | 0.096862% |
+| IV | 3 of 6 | 1 in 57 | 1.765040% |
 
-### Feature Engineering
-- **Digit frequency analysis** - detects patterns in individual digits (0-9)
-- **Prime number ratio** - tracks proportion of primes in draws
-- **Modular residues** - reveals periodicity patterns (mod 2, 3, 5, 7, 10)
-- **Entropy scoring** - measures randomness to detect anomalies
-- **Position frequency** - analyzes where numbers appear when sorted
-- **Autocorrelation** - measures self-similarity between draws
+Any prize ≈ 1 in 54 per variant.
 
-### Neural Networks
-- **MLP (Multi-Layer Perceptron)** - configurable hidden layers with L2 regularization
-- **LSTM** - sequence learning for temporal patterns in draw history
-- **Softmax regression** - lightweight model for probability prediction
+### Loto 5/40 (6 drawn, player picks 5)
 
-### Ensemble Methods
-- **Ensemble Voter** - combines all strategies with weighted voting
-- **Strategy Selector** - automatically selects best-performing strategy
+| Category | Match | Odds | Chance |
+|---|---|---|---|
+| I (jackpot) | 5 of 5 among the 6 drawn | 1 in 109,668 | 0.000912% |
+| II | 4 of 5 | 1 in 1,290 | 0.077507% |
+| III | 3 of 5 | 1 in 59 | 1.705146% |
 
-### Wheeling Systems
-- **Abbreviated Wheels** - reduce tickets while guaranteeing minimum matches
-- **Key Number Wheels** - ensure specific numbers appear in every ticket
-- **Coverage Verification** - validates wheel coverage guarantees
+Any prize ≈ 1 in 56 per variant.
 
-### Backtesting
-- Prize tier tracking (3-match, 4-match, etc.)
-- Wilson score confidence intervals
-- Maximum drawdown (longest losing streak)
-- Rolling window cross-validation
+### Joker (5 main + 1 Joker)
 
-## Quickstart
+| Category | Match | Odds | Chance |
+|---|---|---|---|
+| I (jackpot) | 5 + Joker | 1 in 24,435,180 | 0.000004% |
+| II | 5 main | 1 in 1,286,062 | 0.000078% |
+| III | 4 + Joker | 1 in 122,176 | 0.000818% |
+| IV | 4 main | 1 in 6,430 | 0.015551% |
+| V | 3 + Joker | 1 in 3,133 | 0.031921% |
+| VI | 3 main | 1 in 165 | 0.606503% |
+| VII | 2 + Joker | 1 in 247 | 0.404335% |
+| VIII | 1 + Joker | 1 in 53 | 1.870050% |
+| IX | Joker only | 1 in 37 | 2.692872% |
 
-Run all tests:
+Any prize ≈ 1 in 18 per variant.
+
+### Breakeven jackpots
+
+EV of a ticket turns positive when the jackpot clears the per-game breakeven:
+
+| Game | Approx breakeven | Typical real jackpot |
+|---|---|---|
+| Joker | ~346M RON | 20–80M RON |
+| Loto 6/49 | ~337M RON | 10–30M RON |
+| Loto 5/40 | ~2.2M RON | 400K–1M RON |
+
+Under normal conditions all three games sit well below breakeven, and the EV gate will skip most scheduled runs. A skip is the mathematically correct decision — it preserves budget for the rare rollover that actually clears the threshold.
+
+## CLI
+
+The scheduled workflow invokes `scripts/generate_recommended_picks.py`. Common flags:
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--budget` | required | Budget in RON. Allocator picks a ticket combination that fits. |
+| `--strategy` | `independent` | `independent` \| `core_share` \| `wheel:<pool_size>` |
+| `--mixes` | `1` | Emit N diverse allocations as `tickets_mix{i}.json` |
+| `--seed` | unset | RNG seed for reproducibility |
+| `--output-dir` | — | Directory for `tickets.json` + artifacts |
+| `--ev-gate` | off | Enable jackpot/breakeven skip/boost logic |
+| `--ev-skip-ratio` | `0.5` | Skip if every game's ratio is below this |
+| `--ev-boost-ratio` | `1.2` | Boost from ledger if any game's ratio exceeds this |
+| `--ledger-path` | `data/budget_bank.json` | File-backed budget ledger |
+| `--joker-jackpot` / `--loto649-jackpot` / `--loto540-jackpot` | auto-scraped | Override auto-fetch from loto.ro |
+| `--verbose` | off | Per-game probability breakdown |
+
+Result checker (`scripts/check_results.py`) is invoked by the check-results workflow. It reads `picks/tickets.json` from the last artifact, fetches the latest draws, scores main + side-game matches, and appends to `data/results/history.csv` + `data/results/picks_detail.jsonl`.
+
+## Local development
+
+Run all tests (excluding slow integration tests):
 
 ```bash
-PYTHONPATH=src python -m unittest -v
+PYTHONPATH=src python -m pytest tests/ -q
 ```
 
-### Basic Usage
+Run slow integration tests too:
 
-Generate 2 Joker picks (uses smart strategy by default):
+```bash
+SLOW_TESTS=1 PYTHONPATH=src python -m pytest tests/ -q
+```
+
+Smoke the orchestrator without the EV gate:
+
+```bash
+PYTHONPATH=src python scripts/generate_recommended_picks.py \
+  --budget 70 --seed 42 --strategy core_share --output-dir /tmp/picks
+cat /tmp/picks/tickets.json | python -m json.tool
+```
+
+Legacy per-game CLIs still exist for ad-hoc generation:
 
 ```bash
 PYTHONPATH=src python scripts/generate_joker_picks.py
-```
-
-Generate 2 Loto 6/49 picks:
-
-```bash
 PYTHONPATH=src python scripts/generate_loto_649_picks.py
-```
-
-Generate 2 Loto 5/40 picks:
-
-```bash
 PYTHONPATH=src python scripts/generate_loto_540_picks.py
 ```
 
-### Strategy Selection
+These do not go through the ticket/variant/EV-gate machinery; they emit flat line lists.
 
-Use a specific strategy:
+## Automation setup
 
-```bash
-# Advanced strategies (recommended): smart, optimal, coverage, pattern
-# Statistical strategies: delta, hotcold, pairs, skip, sum, balance
-# Other: auto, ensemble
-PYTHONPATH=src python scripts/generate_joker_picks.py -s smart -n 5
-```
+Repository secrets (all optional; without them the workflow just logs):
 
-### Wheeling Systems
+- `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` — Telegram destination
+- `DATABASE_URL` — Postgres DSN for cross-run analytics
+- `RESULTS_DB_PATH` — SQLite file fallback when no Postgres
 
-Generate a wheel with 10 numbers and 3-match guarantee:
+When a database is configured, scripts dual-write to both files and the following tables:
+`workflow_runs`, `generation_runs`, `generated_tickets`, `check_runs`, `check_results`, `budget_ledger_entries`.
 
-```bash
-PYTHONPATH=src python scripts/generate_joker_picks.py --wheel 10 --wheel-guarantee 3 -v
-```
+The scheduled runner uses the free `ubuntu-24.04-arm` image and the pip cache, which keeps the generate-picks job under 5 min when the EV gate skips (~3 min) and under 10 min when it plays.
 
-Generate a Loto 6/49 wheel with 12 numbers and 4-match guarantee:
+## Data sources
 
-```bash
-PYTHONPATH=src python scripts/generate_loto_649_picks.py --wheel 12 --wheel-guarantee 4 -v
-```
+loto.ro result pages (HTML scraped and cached):
 
-### CLI Options
+- Joker: `https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html`
+- Loto 6/49: `https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html`
+- Loto 5/40: `https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/540_si_super_noroc/rezultate_extrageri.html`
+- Homepage (jackpot scrape): `https://www.loto.ro`
 
-```
--n, --count N          Number of lines to generate (default: 2)
--s, --strategy NAME    Strategy (default: smart)
-                       Advanced: smart, optimal, coverage, pattern
-                       Statistical: delta, hotcold, pairs, skip, sum, balance
-                       Other: auto, ensemble
--v, --verbose          Show detailed strategy information
---seed N               Set deterministic RNG seed
---half-life N          Recency half-life in draws (or days)
---half-life-mode MODE  Recency half-life mode: draws or days
---wheel N              Generate wheeling system with N numbers
---wheel-guarantee N    Minimum match guarantee for wheeling
-```
-
-Environment:
-- `RECENCY_HALF_LIFE_MODE=draws|days` (defaults to draws)
-- `RECENCY_HALF_LIFE` (optional numeric half-life)
-
-### Recency Weighting
-
-Strategies apply exponential decay so newer draws influence scores more. The newest draw always has weight 1.0, and the weight halves at the configured half-life.
-
-- `draws` mode: half-life is measured in number of draws (assumes even spacing).
-- `days` mode: half-life is measured in calendar days between draw dates, so uneven gaps are handled correctly.
-
-### Educational EV Summary
-
-This is an educational snapshot using user-provided jackpots and explicit assumptions. It is not gambling advice.
-
-Solid Facts (No Assumptions Needed):
-- Expected value is negative for all three games at current jackpots (6/49: 16.24M lei, Joker: 47.99M lei, 5/40: 224K lei Cat I).
-- EV-optimal variants = 0 for both Thu and Sun (odds/prices identical by day).
-- Any-prize probabilities (per line): 6/49 ≈ 1.864%, Joker ≈ 5.622%, 5/40 ≈ 1.784%.
-
-Assumptions (User-Specified):
-- Lower-tier expected return as % of line price: 6/49 = 5%, Joker = 7%, 5/40 = 15%.
-- Single-winner jackpot (actual splits reduce EV further).
-- Slip fee 0.5 lei amortized per line.
-
-Net EV per Line (Under Assumptions):
-- 6/49: -6.94 lei (ROI -81.6%)
-- Joker: -5.05 lei (ROI -67.3%)
-- 5/40: -4.41 lei (ROI -80.2%)
-
-Implication (Assumption-Dependent):
-- Under these assumptions, Joker has the least-negative EV among the three.
-
-Cannot Compute Exactly (Data Gap):
-- Probability of net profit per N-line bundle requires exact payout tables (tier payouts or exact % per category).
-
-### Reproducibility
-
-Fixed seed via argument:
-
-```bash
-PYTHONPATH=src python scripts/generate_joker_picks.py --seed 123
-```
-
-Or via environment variable:
-
-```bash
-JOKER_SEED=123 PYTHONPATH=src python scripts/generate_joker_picks.py
-LOTO_649_SEED=123 PYTHONPATH=src python scripts/generate_loto_649_picks.py
-LOTO_540_SEED=123 PYTHONPATH=src python scripts/generate_loto_540_picks.py
-```
-
-### Output Format
-
-- Joker: `1. 7, 11, 44, 45, 46 + J13`
-- Loto 6/49: `1. 1, 7, 18, 27, 35, 49`
-- Loto 5/40: `1. 3, 4, 7, 20, 36`
-- Wheel: Shows coverage info, then numbered tickets
-
-## Automation
-
-The repository includes GitHub Actions workflows that run automatically:
-
-- **Generate Picks** (Sunday & Thursday at 10 AM UTC): Generates picks for all three games using smart strategy and sends them via Telegram
-- **Check Results** (Monday & Friday at 8 AM UTC): Compares generated picks against actual draw results
-
-To enable Telegram notifications, set repository secrets:
-- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
-- `TELEGRAM_CHAT_ID`: Your Telegram chat ID
-
-Optional database persistence for generation/check runs:
-- `DATABASE_URL`: PostgreSQL DSN (recommended for persistent cross-run history)
-- `RESULTS_DB_PATH`: SQLite file path fallback (used only when `DATABASE_URL` is not set)
-
-When configured, scripts dual-write:
-- Existing files (`picks/*.txt`, `results/*.txt`, `data/results/history.csv`)
-- Database tables: `workflow_runs`, `generation_runs`, `generated_tickets`, `check_runs`, `check_results`
-
-## Data Sources
-
-- Joker results:
-  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/joker_si_noroc_plus/rezultate_extrageri.html
-- Loto 6/49 results:
-  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/649_si_noroc/rezultate_extragere.html
-- Loto 5/40 results:
-  - https://www.loto.ro/loto-new/newLotoSiteNexioFinalVersion/web/app2.php/jocuri/540_si_super_noroc/rezultate_extrageri.html
-
-HTML is cached locally to avoid repeated downloads. Parsed draws are stored as CSV.
-
-## Repository Layout
+## Repository layout
 
 ```
 src/
-├── joker_model/      # Joker pipeline (parser, storage, strategies)
-├── loto_649_model/   # Loto 6/49 pipeline
-├── loto_540_model/   # Loto 5/40 pipeline
-└── shared/           # Shared utilities
-    ├── game_config.py        # Game configurations (pool sizes, rules)
-    ├── game_strategies.py    # Unified random/frequency strategies
-    ├── advanced_strategies.py # Smart/optimal/coverage/pattern strategies
-    ├── features.py           # Statistical feature extraction
-    ├── neural_strategies.py  # Neural network strategies
-    ├── math_utils.py         # Softmax, cross-entropy, matrix ops
-    ├── strategy_base.py      # Strategy protocol and base class
-    ├── neural_base.py        # MLP and LSTM implementations
-    ├── stats.py              # Statistical strategies (delta, hotcold, etc.)
-    ├── ensemble.py           # Ensemble voting and selection
-    ├── backtest_base.py      # Backtesting framework
-    └── wheeling.py           # Wheeling systems
+├── joker_model/         # Joker parser, storage, draws model (with noroc_plus)
+├── loto_649_model/      # Loto 6/49 (with noroc)
+├── loto_540_model/      # Loto 5/40 (with super_noroc)
+└── shared/
+    ├── pricing.py              # Confirmed ticket prices (variant + fee + side game)
+    ├── ticket.py               # Ticket + Variant frozen dataclasses
+    ├── side_games.py           # Noroc / Super Noroc / Noroc Plus helpers
+    ├── ticket_allocator.py     # Budget-aware allocator over confirmed prices
+    ├── ticket_builders.py      # IndependentBuilder / CoreShareBuilder / WheelBuilder
+    ├── ticket_metrics.py       # skewness / P(best_match≥N) / median ROI / payout
+    ├── ticket_backtester.py    # Walk-forward harness over historical CSVs
+    ├── ticket_io.py            # tickets.json read/write
+    ├── telegram_formatter.py   # Ticket-aware Telegram messages
+    ├── picks_detail_history.py # JSONL append-only ticket outcome log
+    ├── budget_ledger.py        # EV-gate skip/boost ledger
+    ├── jackpot_scraper.py      # loto.ro homepage jackpot parser
+    ├── ev_calculator.py        # Per-game EV math + breakeven
+    ├── ensemble_blend.py       # Strategy blending (torch-opt-out via env var)
+    ├── game_config.py          # Game pools, numbers drawn/picked
+    ├── game_recommender.py     # Legacy optimizer (kept for compat)
+    ├── results_db.py           # Postgres/SQLite persistence
+    ├── wheeling.py             # Coverage wheels
+    ├── crowding.py             # Anti-crowding payout helpers
+    └── (strategy modules: bayesian, cooccurrence, genetic, gradient_boost, markov, …)
 
-tests/                # Unit tests
-docs/plans/           # Design notes and implementation plans
-data/                 # Cached HTML + CSV (created by scripts)
-scripts/              # CLI tools for generating picks
+scripts/
+├── generate_recommended_picks.py  # Scheduled orchestrator
+├── check_results.py               # Scheduled results checker
+├── workflow_messages.py           # NUL-separated Telegram message emitter
+├── run_jackpot_backtest.py        # Offline strategy comparison
+├── migrate_history_schema.py      # One-shot additive CSV migration
+└── generate_{joker,loto_649,loto_540}_picks.py  # Legacy per-game CLIs
+
+tests/                # unittest + pytest suite (SLOW_TESTS=1 for integration)
+docs/
+├── plans/            # Historical design notes + implementation plans
+└── 2026-plans/       # Backtest reports, strategy analyses
+
+data/
+├── raw/              # Cached loto.ro HTML
+├── clean/            # Parsed draw history per game (CSV)
+├── results/
+│   ├── history.csv         # Aggregated per-ticket outcomes
+│   └── picks_detail.jsonl  # Full-detail replayable log
+└── budget_bank.json  # EV-gate ledger (committed across runs)
 ```
 
-## Limitations and Ethics
+## Limitations
 
-- Lottery outcomes are random; no model can guarantee wins.
-- This project is for research and disciplined experimentation.
-- Use at your own risk; treat spending as entertainment, not investment.
-
-## IF YOU CHOOSE TO PLAY ANYWAY – PURCHASE GUIDE
-
-| Game  | Cost/Line | Slip Fee | Rec. Lines | Total Cost | Exp. Loss   | Break-Even Chance* |
-|-------|-----------|----------|------------|------------|-------------|--------------------|
-| 6/49  | 8.00 lei  | 0.50 lei | 1-5        | 8.50-40.50 | -6.94-34.70 | ~1-7%              |
-| Joker | 7.00 lei  | 0.50 lei | 1-10       | 7.50-70.50 | -5.05-50.50 | ~4-38%             |
-| 5/40  | 5.00 lei  | 0.50 lei | 1-3        | 5.50-15.50 | -4.41-13.23 | ~1-4%              |
-
-* Approximate chance of net profit (any prize > total spent), based on your lower-tier assumptions (5%/7%/15% return).
-
-RECOMMENDATION BY ENTERTAINMENT BUDGET:
-- Under 10 lei: 1 line Joker (7.50 lei, -5.05 expected loss, 4% break-even chance)
-- 10-40 lei: 5 lines Joker (35.50 lei, -25.25 loss, ~22% break-even) OR 1 line each game
-- 50+ lei: 10 lines Joker (70.50 lei, -50.50 loss, ~38% break-even) - still negative EV
-
-KEY INSIGHT:
-If you're buying a ticket anyway for fun, Joker gives you the most chances to hit something (5.6% vs 1.8% per line), so you'll feel the "entertainment value" more often than 6/49 or 5/40.
+- Lottery outcomes are random; no model improves win probability.
+- The backtest signal on current history (1000–1200 draws per game) is **not statistically significant**. CoreShare and Wheel show directional jackpot-tilt vs Independent but sample size is too small for conclusive claims.
+- At the default 70 RON budget the allocator picks all-Joker (it dominates `P(any win) / RON` by 3–50×). CoreShare / Wheel only run in production if you pass `--strategy core_share` or add a future `--min-per-game` flag.
+- Anti-crowding (playing unpopular numbers to split the jackpot less when winning) is implemented but not yet wired into the main builders.
+- Treat any spending as entertainment, not investment. Under normal jackpot conditions the EV gate will skip most scheduled runs — that is the mathematically correct behavior.
