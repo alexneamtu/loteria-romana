@@ -2,24 +2,28 @@ name: Check Lottery Results
 
 on:
   schedule:
-    # Check results: Monday and Friday at 9 AM UTC (11 AM EET) - morning after draws
-    - cron: '0 9 * * 1,5'
+    # Check results: Monday and Friday at 6 AM UTC (8 AM EET / 9 AM EEST) - morning after draws
+    - cron: '0 6 * * 1,5'
   workflow_dispatch:
     inputs:
       max_retries:
-        description: 'Max retries for results check (default: 3)'
+        description: 'Max retries for results check (default: 1; side games typically not published in time)'
         required: false
-        default: '3'
+        default: '1'
         type: string
       retry_delay:
-        description: 'Delay between retries in minutes (default: 5)'
+        description: 'Delay between retries in minutes (default: 1)'
         required: false
-        default: '5'
+        default: '1'
         type: string
 
 permissions:
   actions: read
   contents: write
+
+concurrency:
+  group: history-writers
+  cancel-in-progress: false
 
 jobs:
   check-results:
@@ -35,6 +39,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install DB driver
         run: pip install psycopg[binary]
@@ -60,8 +65,8 @@ jobs:
       - name: Check results
         timeout-minutes: 20
         env:
-          MAX_RETRIES: ${{ github.event.inputs.max_retries || '3' }}
-          RETRY_DELAY_MINUTES: ${{ github.event.inputs.retry_delay || '5' }}
+          MAX_RETRIES: ${{ github.event.inputs.max_retries || '1' }}
+          RETRY_DELAY_MINUTES: ${{ github.event.inputs.retry_delay || '1' }}
         run: python scripts/check_results.py
 
       - name: Send results to Telegram
@@ -92,5 +97,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/results/history.csv data/results/picks_detail.jsonl
-          git diff --staged --quiet || git commit -m "chore: update results history"
+          if git diff --staged --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: update results history"
+          git pull --rebase origin main
           git push
