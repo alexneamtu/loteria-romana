@@ -1,5 +1,5 @@
 {
-  "balance": 1190.0,
+  "balance": 1260.0,
   "entries": [
     {
       "kind": "credit",
@@ -100,6 +100,12 @@
     {
       "kind": "credit",
       "draw_date": "2026-06-11",
+      "amount": 70.0,
+      "reason": "all ratios < 0.5 (joker=0.01  loto_649=0.09  loto_540=0.46)"
+    },
+    {
+      "kind": "credit",
+      "draw_date": "2026-06-14",
       "amount": 70.0,
       "reason": "all ratios < 0.5 (joker=0.01  loto_649=0.09  loto_540=0.46)"
     }
