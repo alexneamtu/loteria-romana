@@ -30,7 +30,7 @@ def append_draws(path: Path, draws: list[JokerDraw]) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     exists = path.exists()
     with path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
+        writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES, lineterminator="\n")
         if not exists:
             writer.writeheader()
         for draw in draws:
