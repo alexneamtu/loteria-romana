@@ -74,7 +74,7 @@ jobs:
         run: pip install psycopg[binary]
 
       - name: Backfill latest historical draws
-        run: PYTHONPATH=src python scripts/backfill_noroc_chior.py
+        run: PYTHONPATH=src python scripts/backfill_loto_ro.py
 
       - name: Resolve budget
         id: config
@@ -171,19 +171,20 @@ jobs:
                 -d parse_mode=Markdown > /dev/null
             done
 
-      - name: Commit budget ledger
+      - name: Commit budget ledger and draw history
         if: always()
         run: |
-          if [ ! -f data/budget_bank.json ]; then
-            echo "no ledger file; skipping commit"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/budget_bank.json
+          # Committing the refreshed draws keeps the next run's backfill down to
+          # the current month instead of every month since the last commit.
+          git add data/clean
+          if [ -f data/budget_bank.json ]; then
+            git add data/budget_bank.json
+          fi
           if git diff --staged --quiet; then
             exit 0
           fi
-          git commit -m "chore: update budget ledger"
+          git commit -m "chore: update budget ledger and draw history"
           git pull --rebase --autostash origin main
           git push
