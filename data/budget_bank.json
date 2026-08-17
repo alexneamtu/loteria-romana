@@ -1,5 +1,5 @@
 {
-  "balance": 2240.0,
+  "balance": 1680.0,
   "entries": [
     {
       "kind": "credit",
@@ -192,6 +192,13 @@
       "draw_date": "2026-08-16",
       "amount": 70.0,
       "reason": "all ratios < 0.5 (joker=0.01  loto_649=0.00  loto_540=0.14)"
+    },
+    {
+      "kind": "debit",
+      "draw_date": "2026-08-17",
+      "amount": 560.0,
+      "requested": 560.0,
+      "reason": "max ratio 0.81 > 0.35 (joker=0.02  loto_649=0.01  loto_540=0.81)"
     }
   ]
 }
