@@ -10,7 +10,20 @@ from types import SimpleNamespace
 from unittest import mock
 
 import scripts.generate_recommended_picks as recommended_script
+from shared.ev_calculator import EVCalculator
 from shared.ticket_allocator import TicketAllocation
+
+
+def loto540_jackpot_at(ratio: float) -> float:
+    """5/40 jackpot giving this jackpot/breakeven ratio.
+
+    Derived, not hard-coded: these tests exercise the gate's skip/play/boost
+    bands, and a frozen jackpot silently changes band whenever the breakeven
+    is corrected (as it was when Category I dropped from 6/C(40,5) to 1).
+    """
+    calc = EVCalculator()
+    breakeven = calc._calculate_positive_ev_jackpot(calc.create_loto_540(), 1.0, 0.0)  # noqa: SLF001
+    return round(ratio * breakeven, 2)
 
 
 # Subprocess-based tests spawn the real orchestrator end-to-end (loading
@@ -62,14 +75,14 @@ class TestEVGate(unittest.TestCase):
 
 class TestApplyEVGateV2(unittest.TestCase):
     # Per-line breakevens from EVCalculator (main-ticket cost / variants):
-    # joker ≈ 169M, loto_649 ≈ 108M, loto_540 ≈ 548K.
+    # joker ≈ 169M, loto_649 ≈ 108M, loto_540 ≈ 3.36M.
     SKIP_RATIO = 0.5
     BOOST_RATIO = 1.2
 
     def test_skip_when_all_ratios_below_threshold(self):
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": 200_000.0},
+            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": loto540_jackpot_at(0.36)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -79,10 +92,10 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("loto_540=", decision.reason)
 
     def test_play_when_some_ratio_in_band(self):
-        # loto_540 jackpot = ~500K (ratio ~0.91 vs ~548K breakeven)
+        # ratio ~0.91: above skip_ratio, below boost_ratio -> play
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 500_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(0.91)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -90,10 +103,10 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("loto_540=", decision.reason)
 
     def test_boost_when_max_ratio_above_threshold(self):
-        # loto_540 jackpot = ~3.5M (ratio ~6.4 vs ~548K breakeven)
+        # ratio ~6.4: well above boost_ratio -> boost
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(6.38)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -107,7 +120,7 @@ class TestApplyEVGateV2(unittest.TestCase):
         # more skips than boosts; it grew monotonically to 2240 RON.
         decision = recommended_script.apply_ev_gate_v2(
             budget=70.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(6.38)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
             ledger_balance=2240.0,
@@ -122,7 +135,7 @@ class TestApplyEVGateV2(unittest.TestCase):
         for _ in range(6):
             decision = recommended_script.apply_ev_gate_v2(
                 budget=70.0,
-                jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+                jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(6.38)},
                 skip_ratio=self.SKIP_RATIO,
                 boost_ratio=self.BOOST_RATIO,
                 ledger_balance=balance,
@@ -189,8 +202,8 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
         self.assertEqual(gate_v2.call_args.kwargs["skip_ratio"], 0.10)
 
     def test_dead_band_credits_ledger_and_writes_skip_notice(self):
-        # loto_540 breakeven ≈ 548K, so a 120k jackpot is ratio ≈ 0.22:
-        # above skip_ratio (plays) but below min_ratio (every game blocked).
+        # ratio ≈ 0.22: above skip_ratio (plays) but below min_ratio
+        # (every game blocked) — the dead band.
         nonzero = TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 1},
             total_cost=20.5,
@@ -207,7 +220,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
                     "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "120000",
+                    "--loto540-jackpot", str(loto540_jackpot_at(0.22)),
                     "--ledger-path", str(ledger_path),
                     "--output-dir", str(out_dir),
                 ]):
@@ -238,7 +251,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "--mixes", "3",
                     "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "120000",
+                    "--loto540-jackpot", str(loto540_jackpot_at(0.22)),
                     "--ledger-path", str(ledger_path),
                     "--output-dir", str(out_dir),
                 ]):
@@ -271,7 +284,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
                     "--ev-min-ratio", "0.10", "--ev-boost-fraction", "0.25",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "1000000",
+                    "--loto540-jackpot", str(loto540_jackpot_at(1.82)),
                     "--ledger-path", str(ledger_path),
                 ]):
                 recommended_script.main()

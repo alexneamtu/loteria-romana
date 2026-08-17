@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from shared.ev_calculator import EVCalculator
@@ -51,14 +52,28 @@ class TestBreakevenSpreadsCostAcrossLines(unittest.TestCase):
             # The bug charged the whole ticket against one line; guard it.
             self.assertLess(breakeven, whole_ticket * 0.99)
 
-    def test_loto_540_breakeven_is_reachable_by_real_rollovers(self):
-        # Real 5/40 rollovers reach 400K-1M RON (see README). The per-line
-        # breakeven (~548K) sits inside that band; the old whole-ticket
-        # figure (~2.23M) wrongly put 5/40 out of reach.
+    def test_loto_540_category_i_is_the_first_five_drawn(self):
+        # loto.ro Category I is "5 numere din primele 5 extrase": exactly one
+        # of the C(40,5) sets wins it. Category II is the other five 5-subsets
+        # of the six drawn. Modelling both as C(6,5)/C(40,5) counted one event
+        # twice and made the jackpot 6x too likely.
+        game = EVCalculator().create_loto_540()
+        total = math.comb(40, 5)
+        by_matches = {t.matches_required: t.probability for t in game.prize_tiers}
+        self.assertAlmostEqual(by_matches[6], 1 / total)
+        self.assertAlmostEqual(by_matches[5], 5 / total)
+        self.assertAlmostEqual(by_matches[4], 510 / total)
+        # 3 matches pays nothing in 5/40 — there is no fourth category.
+        self.assertNotIn(3, by_matches)
+
+    def test_loto_540_breakeven_is_far_above_routine_rollovers(self):
+        # With Category I correct the breakeven is ~3.36M, not ~548K. Routine
+        # 5/40 rollovers (400K-1M) are nowhere near it, so the EV gate must
+        # not treat them as close to breakeven.
         calc = EVCalculator()
         breakeven = calc._calculate_positive_ev_jackpot(calc.create_loto_540(), 1.0, 0.0)  # noqa: SLF001
-        self.assertGreater(breakeven, 400_000)
-        self.assertLess(breakeven, 1_000_000)
+        self.assertGreater(breakeven, 3_000_000)
+        self.assertLess(1_000_000 / breakeven, 0.35)  # below the boost trigger
 
 
 if __name__ == "__main__":

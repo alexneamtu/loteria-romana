@@ -178,11 +178,7 @@ class EVCalculator:
                 matches_required=4,
                 fixed_prize=30.0,
             ),
-            PrizeTier(
-                name="Category IV (3 matches)",
-                matches_required=3,
-                fixed_prize=6.0,
-            ),
+            # Loto 5/40 has three categories only — 3 matches pays nothing.
         ]
 
         EVCalculator._calculate_probabilities_540(game)
@@ -298,10 +294,16 @@ class EVCalculator:
             m = tier.matches_required
 
             if m == 6:
-                # Special case: all 5 picks among the 6 drawn (5+1)
-                # This means 5 of our picks match 5 of the 6 drawn
-                # P = C(6,5) * C(34,0) / C(40,5) = 6 / C(40,5)
-                ways = EVCalculator._combinations(drawn, picked)
+                # Category I is NOT "5 picks among the 6 drawn" — loto.ro
+                # defines it as the 5 picks equalling the FIRST five balls
+                # drawn ("5 numere din primele 5 extrase"). Exactly one of
+                # the C(40,5) sets qualifies. Modelling it as C(6,5)/C(40,5)
+                # made the jackpot 6x too likely and the breakeven jackpot
+                # 6x too low, which is what drove the EV gate to boost.
+                tier.probability = 1 / total_combinations
+            elif m == picked:
+                # Category II: the other five 5-subsets of the six drawn.
+                ways = EVCalculator._combinations(drawn, picked) - 1
                 tier.probability = ways / total_combinations
             else:
                 # m matches out of our 5 picks

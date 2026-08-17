@@ -533,7 +533,13 @@ def main():
         this the budget was neither spent nor banked.
         """
         if ledger is not None:
-            ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=reason)
+            # Bank the whole effective budget, not just the day's: a boost
+            # released before the per-game filter zeroed the allocation was
+            # otherwise debited and never returned. effective_budget is
+            # args.budget + any boost, so this covers both.
+            ledger.credit_skip(
+                draw_date=draw_date, amount=effective_budget, reason=reason
+            )
             print(f"EV gate: SKIP — {reason}. Ledger balance: {ledger.balance():.2f} RON")
         if output_dir:
             balance = f"Ledger balance: {ledger.balance():.2f} RON\n" if ledger else ""
