@@ -49,7 +49,7 @@ Two constraints keep that honest:
 
 Simulated against the last nine runs' observed ratios and the real allocator, the balance settles near 800 RON instead of passing 4000.
 
-**These thresholds are relative, not break-even.** A ratio of 1.0 means the jackpot has reached the point where a ticket's EV crosses zero — for Joker that is ~169M RON and for 6/49 ~108M RON, still well above the largest jackpots those games have ever paid. Gating Joker/6/49 at `ratio ≥ 1.0` therefore means practically never playing them, which is the mathematically correct answer and also a pipeline that produces nothing. The thresholds above instead ask "is this jackpot high relative to its own range?" and accept a negative EV. Loto 5/40 is the exception: its breakeven (~548K RON) sits inside the 400K–1M band real rollovers reach, so 5/40 genuinely clears 1.0 on routine rollovers and the gate boosts it.
+**These thresholds are relative, not break-even.** A ratio of 1.0 means the jackpot has reached the point where a ticket's EV crosses zero — for Joker that is ~356M RON and for 6/49 ~202M RON, far above the largest jackpots those games have ever paid. Gating at `ratio ≥ 1.0` therefore means practically never playing, which is the mathematically correct answer and also a pipeline that produces nothing. The thresholds above instead ask "is this jackpot high relative to its own range?" and accept a negative EV. Loto 5/40 comes closest at ~6.1M RON, but routine 400K–1M rollovers are still 6–15x short of it — an earlier version of this pipeline put 5/40's breakeven at ~548K and boosted on ordinary rollovers, which was a sixfold error in the Category I probability.
 
 `--ev-skip-ratio` defaults to `--ev-min-ratio` so the global skip gate and the per-game filter cannot disagree. Setting skip lower than min only widens the band where a draw is nominally played but every game is filtered out; that case now credits the ledger and posts a reason rather than silently dropping the budget.
 
@@ -114,11 +114,11 @@ EV of a ticket turns positive when the jackpot clears the per-game breakeven:
 
 | Game | Approx breakeven | Typical real jackpot |
 |---|---|---|
-| Joker | ~169M RON | 20–80M RON |
-| Loto 6/49 | ~108M RON | 10–30M RON |
-| Loto 5/40 | ~548K RON | 400K–1M RON |
+| Joker | ~356M RON | 20–80M RON |
+| Loto 6/49 | ~202M RON | 10–30M RON |
+| Loto 5/40 | ~6.1M RON | 400K–1M RON |
 
-Joker and 6/49 sit well below breakeven under any realistic jackpot, so the EV gate skips them on most scheduled runs. Loto 5/40's breakeven (~548K) falls inside the range real rollovers reach, so the gate plays — and on high rollovers boosts — 5/40 while skipping the other two. A skip is the mathematically correct decision — it preserves budget for the rare rollover that actually clears the threshold.
+All three sit well below breakeven under any realistic jackpot, so the EV gate skips most scheduled runs. Breakevens are computed on the ticket actually bought (side game included, since its prizes are not modelled), count declared prize amounts only, and apply the progressive tax from Legea 141/2025. A skip is the mathematically correct decision — it preserves budget for the rare rollover that actually clears the threshold.
 
 ## CLI
 
@@ -129,7 +129,7 @@ The scheduled workflow invokes `scripts/generate_recommended_picks.py`. Common f
 | `--budget` | required | Budget in RON. Allocator picks a ticket combination that fits. |
 | `--bucket-budget` | unset | Per-game split, e.g. `joker=20,loto_649=30,loto_540=20`. Runs the allocator independently per game so non-dominant games still get exercised. |
 | `--strategy` | `independent` | `independent` \| `core_share` \| `wheel:<pool_size>` |
-| `--mixes` | `1` | Emit N diverse allocations as `tickets_mix{i}.json` |
+| `--mixes` | `1` | Emit N diverse allocations as `tickets_mix{i}.json`, each a full-budget alternative to choose between (the Telegram workflow only reads `tickets.json`, so multi-mix output is CLI-only) |
 | `--seed` | unset | RNG seed for reproducibility |
 | `--output-dir` | — | Directory for `tickets.json` + artifacts |
 | `--ev-gate` | off | Enable jackpot/breakeven skip/boost logic |

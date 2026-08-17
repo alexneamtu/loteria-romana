@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 import random
+from math import isfinite
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -150,11 +151,32 @@ def load_joker_draws():
     return load_draws(csv_path)
 
 
-def _parse_bucket_budget(raw: str | None) -> dict[str, float] | None:
+def _gate_games(calc: EVCalculator) -> dict[str, object]:
+    """Games priced as the allocator actually buys them.
+
+    The side game is bought unconditionally (compute_ticket_cost defaults to
+    include_side_game=True) but its prize ladder is not modelled, so the gate
+    credits it nothing. Charging its cost anyway keeps the comparison honest:
+    counting zero benefit against a partial cost is what let a 580,000 RON
+    5/40 rollover read 0.104 (play) on a 20.50 basis and 0.094 (skip) on the
+    22.50 actually spent.
+    """
+    return {
+        "joker": calc.create_joker(ticket_cost=compute_ticket_cost("joker")),
+        "loto_649": calc.create_loto_649(ticket_cost=compute_ticket_cost("loto_649")),
+        "loto_540": calc.create_loto_540(ticket_cost=compute_ticket_cost("loto_540")),
+    }
+
+
+def _parse_bucket_budget(
+    raw: str | None, budget: float | None = None
+) -> dict[str, float] | None:
     """Parse `--bucket-budget` like 'joker=20,loto_649=30,loto_540=25' into a dict.
 
     Returns None when the flag is unset. Unknown games raise SystemExit so
-    typos fail loudly rather than silently falling through to all-Joker.
+    typos fail loudly rather than silently falling through to all-Joker, and
+    so does a split that exceeds `budget` — each bucket is allocated
+    independently, so the sum is what actually gets spent.
     """
     if raw is None or not raw.strip():
         return None
@@ -171,9 +193,22 @@ def _parse_bucket_budget(raw: str | None) -> dict[str, float] | None:
         if game not in known:
             raise SystemExit(f"--bucket-budget unknown game {game!r}; known: {sorted(known)}")
         try:
-            out[game] = float(amount)
+            value = float(amount)
         except ValueError as exc:
             raise SystemExit(f"--bucket-budget amount {amount!r} is not numeric") from exc
+        # NaN defeats every comparison it touches: `nan > budget` is False and
+        # so is the allocator's `cost > nan`, so a NaN bucket bought 8 tickets
+        # of every game. Negatives let one bucket mask another's overspend.
+        if not isfinite(value) or value < 0:
+            raise SystemExit(
+                f"--bucket-budget amount {amount!r} must be finite and non-negative"
+            )
+        out[game] = value
+    total = sum(out.values())
+    if budget is not None and total > budget:
+        raise SystemExit(
+            f"--bucket-budget sums to {total:.2f} RON, over --budget {budget:.2f} RON"
+        )
     return out
 
 
@@ -320,18 +355,14 @@ def apply_ev_gate(
         return allocation, {}
 
     calc = EVCalculator()
-    games = {
-        "joker": calc.create_joker(),
-        "loto_649": calc.create_loto_649(),
-        "loto_540": calc.create_loto_540(),
-    }
+    games = _gate_games(calc)
 
     details: dict[str, dict[str, float | bool]] = {}
     allowed_games: set[str] = set()
 
     for game_name, game in games.items():
         jackpot = jackpots.get(game_name)
-        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
         ratio = 0.0
         if jackpot and breakeven and breakeven > 0:
             ratio = jackpot / breakeven
@@ -403,16 +434,12 @@ def apply_ev_gate_v2(
     boost leaves a smaller bank behind.
     """
     calc = EVCalculator()
-    games = {
-        "joker": calc.create_joker(),
-        "loto_649": calc.create_loto_649(),
-        "loto_540": calc.create_loto_540(),
-    }
+    games = _gate_games(calc)
     ratios: dict[str, float] = {}
     breakevens: dict[str, float] = {}
     for game_name, game in games.items():
         jackpot = jackpots.get(game_name)
-        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
         breakevens[game_name] = float(breakeven or 0)
         if jackpot is None or breakeven is None or breakeven <= 0:
             ratios[game_name] = 0.0
@@ -533,7 +560,13 @@ def main():
         this the budget was neither spent nor banked.
         """
         if ledger is not None:
-            ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=reason)
+            # Bank the whole effective budget, not just the day's: a boost
+            # released before the per-game filter zeroed the allocation was
+            # otherwise debited and never returned. effective_budget is
+            # args.budget + any boost, so this covers both.
+            ledger.credit_skip(
+                draw_date=draw_date, amount=effective_budget, reason=reason
+            )
             print(f"EV gate: SKIP — {reason}. Ledger balance: {ledger.balance():.2f} RON")
         if output_dir:
             balance = f"Ledger balance: {ledger.balance():.2f} RON\n" if ledger else ""
@@ -651,7 +684,10 @@ def main():
             all_db_rows.extend(_tickets_to_db_rows(tickets, suffix=suffix))
 
 
-        refund_unused_boost(sum(a.total_cost for a in allocations))
+        # Mixes are alternatives — one basket gets bought, not all of them.
+        # Summing their costs told the ledger `mixes x budget` was spent and
+        # refunded nothing, so bank against the one that would be chosen.
+        refund_unused_boost(allocations[0].total_cost if allocations else 0.0)
         best_alloc = allocations[0] if allocations else TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
             total_cost=0.0,
@@ -674,7 +710,7 @@ def main():
             tickets=all_db_rows,
         )
     else:
-        buckets = _parse_bucket_budget(args.bucket_budget)
+        buckets = _parse_bucket_budget(args.bucket_budget, effective_budget)
         if buckets is not None:
             allocation = best_per_game_allocation(buckets)
         else:

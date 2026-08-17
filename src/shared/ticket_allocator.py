@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import comb
 
-from .pricing import compute_ticket_cost
+from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
 
 
 _GAMES = ("joker", "loto_649", "loto_540")
@@ -52,12 +52,12 @@ def _variant_win_prob(game: str) -> float:
     return sum(comb(6, m) * comb(34, 5 - m) / total for m in range(4, 6))
 
 
-_VARIANTS_PER_TICKET = {"joker": 2, "loto_649": 3, "loto_540": 4}
-
-
 def _p_ticket_any_win(game: str) -> float:
     p = _variant_win_prob(game)
-    v = _VARIANTS_PER_TICKET[game]
+    # From pricing, not a local copy: costs already come from there, so a
+    # local variant count that drifted would price a ticket one way and score
+    # its odds another.
+    v = VARIANTS_PER_TICKET[game]
     return 1.0 - (1.0 - p) ** v
 
 

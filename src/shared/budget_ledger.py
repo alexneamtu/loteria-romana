@@ -37,8 +37,21 @@ class BudgetLedger:
     def entries(self) -> list[dict[str, Any]]:
         return list(self._data.get("entries", []))
 
+    def _already_recorded(self, kind: str, draw_date: str) -> bool:
+        """True if this draw already has an entry of this kind.
+
+        One draw gets one credit and one debit. Without this a re-run or a
+        retry of the same draw banks or releases the money again: the
+        2026-08-17 draw released 560 + 420 + 319.38 RON against a 70 RON
+        budget because each invocation debited afresh.
+        """
+        return any(
+            e.get("kind") == kind and e.get("draw_date") == draw_date
+            for e in self._data.get("entries", [])
+        )
+
     def credit_skip(self, draw_date: str, amount: float, reason: str) -> None:
-        if amount <= 0:
+        if amount <= 0 or self._already_recorded("credit", draw_date):
             return
         self._data["balance"] = self.balance() + amount
         self._data["entries"].append(
@@ -52,7 +65,7 @@ class BudgetLedger:
         self._save()
 
     def debit_boost(self, draw_date: str, amount: float, reason: str) -> float:
-        if amount <= 0:
+        if amount <= 0 or self._already_recorded("debit", draw_date):
             return 0.0
         actual = min(amount, self.balance())
         if actual <= 0:

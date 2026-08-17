@@ -12,9 +12,23 @@ The key insight: EV is almost always negative, but certain conditions
 (large jackpots, roll-down events) can create +EV situations.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
-import math
+
+from .tax import gross_for_net, net_of_tax
+
+# Share of eligible stakes assigned to the prize fund. The regulation sets a
+# 40% minimum, and three Loto Prono bulletins (5/40 and 6/49 13.07.2025, Joker
+# 08.05.2025) reconcile to exactly 0.400000 once report carry-ins are removed.
+# Those bulletins were not retrieved first-hand, and back-solving the fraction
+# from individual draw reports scatters it across roughly 0.27-0.64 — the
+# per-draw sales reconstruction is too loose to pin it down.
+#
+# So: unverified but reasonable, and deliberately walled off from the spend
+# decision. Only _parimutuel_prize uses it, and the breakeven that gates
+# spending counts declared prizes only.
+PARIMUTUEL_PAYOUT_FRACTION = 0.40
 
 
 @dataclass
@@ -40,6 +54,9 @@ class LotteryGame:
     # cost but prize probabilities are per-line, so breakeven math must
     # spread the cost across the lines the ticket actually plays.
     lines_per_ticket: int = 1
+    # Stake per line that funds prizes. NOT ticket_cost/lines: the 0.50 RON
+    # processing fee is charged once per ticket and funds nothing.
+    stake_per_line: float = 0.0
     prize_tiers: list[PrizeTier] = field(default_factory=list)
     has_bonus: bool = False
     bonus_pool_size: int = 0
@@ -82,17 +99,15 @@ class EVCalculator:
         """
         Create Loto 6/49 game configuration.
 
-        Prize structure:
-        - Category I: 6 matches (jackpot, pari-mutuel)
-        - Category II: 5 matches (pari-mutuel)
-        - Category III: 4 matches (fixed)
-        - Category IV: 3 matches (fixed)
+        Prize structure (verified against the 16.08.2026 report):
+        - Category IV: 3 matches, fixed 50 RON, paid off the top
+        - Categories I/II/III: 60/20/20 of what remains, all pari-mutuel
 
         The default ticket_cost excludes the Noroc side-game stake: EV
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
-        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
+        from .pricing import PRICE_PER_VARIANT, VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
             ticket_cost = compute_ticket_cost("loto_649", include_side_game=False)
         game = LotteryGame(
@@ -102,6 +117,7 @@ class EVCalculator:
             numbers_picked=6,
             ticket_cost=ticket_cost,
             lines_per_ticket=VARIANTS_PER_TICKET["loto_649"],
+            stake_per_line=PRICE_PER_VARIANT["loto_649"],
             has_bonus=False,
             jackpot_seed=100_000,  # Minimum jackpot
             rollover_percentage=1.0  # Full rollover
@@ -111,22 +127,22 @@ class EVCalculator:
             PrizeTier(
                 name="Category I (6 matches)",
                 matches_required=6,
-                prize_pool_percentage=0.50,  # 50% of prize fund
+                prize_pool_percentage=0.60,
             ),
             PrizeTier(
                 name="Category II (5 matches)",
                 matches_required=5,
-                prize_pool_percentage=0.15,  # 15% of prize fund
+                prize_pool_percentage=0.20,
             ),
             PrizeTier(
                 name="Category III (4 matches)",
                 matches_required=4,
-                fixed_prize=80.0,
+                prize_pool_percentage=0.20,  # was "fixed 80"; report shows 345.57
             ),
             PrizeTier(
                 name="Category IV (3 matches)",
                 matches_required=3,
-                fixed_prize=20.0,
+                fixed_prize=50.0,  # was 20.0; report shows 50.00/winner
             ),
         ]
 
@@ -147,7 +163,7 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
-        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
+        from .pricing import PRICE_PER_VARIANT, VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
             ticket_cost = compute_ticket_cost("loto_540", include_side_game=False)
         game = LotteryGame(
@@ -157,6 +173,7 @@ class EVCalculator:
             numbers_picked=5,  # Player picks 5
             ticket_cost=ticket_cost,
             lines_per_ticket=VARIANTS_PER_TICKET["loto_540"],
+            stake_per_line=PRICE_PER_VARIANT["loto_540"],
             has_bonus=False,
             jackpot_seed=50_000,
             rollover_percentage=1.0
@@ -171,18 +188,14 @@ class EVCalculator:
             PrizeTier(
                 name="Category II (5 matches)",
                 matches_required=5,
-                prize_pool_percentage=0.20,
+                prize_pool_percentage=0.25,
             ),
             PrizeTier(
                 name="Category III (4 matches)",
                 matches_required=4,
-                fixed_prize=30.0,
+                prize_pool_percentage=0.25,  # was "fixed 30"; report shows 830.15
             ),
-            PrizeTier(
-                name="Category IV (3 matches)",
-                matches_required=3,
-                fixed_prize=6.0,
-            ),
+            # Loto 5/40 has three categories only — 3 matches pays nothing.
         ]
 
         EVCalculator._calculate_probabilities_540(game)
@@ -200,7 +213,7 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
-        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
+        from .pricing import PRICE_PER_VARIANT, VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
             ticket_cost = compute_ticket_cost("joker", include_side_game=False)
         game = LotteryGame(
@@ -210,6 +223,7 @@ class EVCalculator:
             numbers_picked=5,
             ticket_cost=ticket_cost,
             lines_per_ticket=VARIANTS_PER_TICKET["joker"],
+            stake_per_line=PRICE_PER_VARIANT["joker"],
             has_bonus=True,
             bonus_pool_size=20,
             jackpot_seed=200_000,
@@ -221,13 +235,13 @@ class EVCalculator:
                 name="Category I (5+Joker)",
                 matches_required=5,
                 bonus_required=True,
-                prize_pool_percentage=0.45,
+                prize_pool_percentage=0.37,
             ),
             PrizeTier(
                 name="Category II (5 matches)",
                 matches_required=5,
                 bonus_required=False,
-                prize_pool_percentage=0.10,
+                prize_pool_percentage=0.08,
             ),
             PrizeTier(
                 name="Category III (4+Joker)",
@@ -239,31 +253,31 @@ class EVCalculator:
                 name="Category IV (4 matches)",
                 matches_required=4,
                 bonus_required=False,
-                fixed_prize=100.0,
+                prize_pool_percentage=0.04,
             ),
             PrizeTier(
                 name="Category V (3+Joker)",
                 matches_required=3,
                 bonus_required=True,
-                fixed_prize=50.0,
+                prize_pool_percentage=0.05,
             ),
             PrizeTier(
                 name="Category VI (3 matches)",
                 matches_required=3,
                 bonus_required=False,
-                fixed_prize=14.0,
+                prize_pool_percentage=0.13,
             ),
             PrizeTier(
                 name="Category VII (2+Joker)",
                 matches_required=2,
                 bonus_required=True,
-                fixed_prize=14.0,
+                prize_pool_percentage=0.06,
             ),
             PrizeTier(
                 name="Category VIII (1+Joker)",
                 matches_required=1,
                 bonus_required=True,
-                fixed_prize=8.0,
+                prize_pool_percentage=0.19,
             ),
         ]
 
@@ -298,10 +312,16 @@ class EVCalculator:
             m = tier.matches_required
 
             if m == 6:
-                # Special case: all 5 picks among the 6 drawn (5+1)
-                # This means 5 of our picks match 5 of the 6 drawn
-                # P = C(6,5) * C(34,0) / C(40,5) = 6 / C(40,5)
-                ways = EVCalculator._combinations(drawn, picked)
+                # Category I is NOT "5 picks among the 6 drawn" — loto.ro
+                # defines it as the 5 picks equalling the FIRST five balls
+                # drawn ("5 numere din primele 5 extrase"). Exactly one of
+                # the C(40,5) sets qualifies. Modelling it as C(6,5)/C(40,5)
+                # made the jackpot 6x too likely and the breakeven jackpot
+                # 6x too low, which is what drove the EV gate to boost.
+                tier.probability = 1 / total_combinations
+            elif m == picked:
+                # Category II: the other five 5-subsets of the six drawn.
+                ways = EVCalculator._combinations(drawn, picked) - 1
                 tier.probability = ways / total_combinations
             else:
                 # m matches out of our 5 picks
@@ -347,7 +367,7 @@ class EVCalculator:
     def calculate_ev(self, game: LotteryGame,
                      jackpot: Optional[float] = None,
                      expected_winners: float = 1.0,
-                     tax_rate: float = 0.0) -> EVResult:
+                     tax_rate: Optional[float] = None) -> EVResult:
         """
         Calculate expected value for a lottery ticket.
 
@@ -355,7 +375,8 @@ class EVCalculator:
             game: Lottery game configuration
             jackpot: Current jackpot amount (uses seed if not provided)
             expected_winners: Expected number of jackpot winners (for splitting)
-            tax_rate: Tax rate on winnings (0-1)
+            tax_rate: Flat rate on winnings (0-1), or None (default) for
+                the Romanian progressive schedule
 
         Returns:
             EVResult with detailed breakdown
@@ -366,23 +387,17 @@ class EVCalculator:
         total_ev = 0.0
         tier_breakdown = []
 
+        jackpot_tier = self._jackpot_tier(game)
+
         for tier in game.prize_tiers:
-            if tier.fixed_prize is not None:
-                prize = tier.fixed_prize
-            elif tier.matches_required == game.numbers_drawn or \
-                 (tier.matches_required == game.numbers_picked and
-                  tier.bonus_required and game.has_bonus):
-                # Jackpot tier - share among expected winners
+            if tier is jackpot_tier:
                 prize = jackpot / expected_winners
+            elif tier.fixed_prize is not None:
+                prize = tier.fixed_prize
             else:
-                # Other pari-mutuel tiers (estimate based on percentage)
-                # Rough estimate: assume prize pool is ~50% of ticket sales
-                prize = 1000.0 * (tier.prize_pool_percentage or 0.05)
+                prize = self._parimutuel_prize(game, tier)
 
-            # Apply tax
-            net_prize = prize * (1 - tax_rate)
-
-            # Calculate EV contribution
+            net_prize = self._net_prize(prize, tax_rate)
             ev_contribution = tier.probability * net_prize
             total_ev += ev_contribution
 
@@ -395,9 +410,12 @@ class EVCalculator:
                 "ev_contribution": ev_contribution
             })
 
-        # Final EV is total expected returns minus ticket cost
-        net_ev = total_ev - game.ticket_cost
-        return_pct = (total_ev / game.ticket_cost) * 100
+        # total_ev is per line (tier probabilities are per line) but
+        # ticket_cost buys lines_per_ticket of them. Scale before subtracting,
+        # or a 4-line 5/40 ticket looks 3 lines' worth of returns short.
+        ticket_ev = total_ev * game.lines_per_ticket
+        net_ev = ticket_ev - game.ticket_cost
+        return_pct = (ticket_ev / game.ticket_cost) * 100
 
         # Calculate jackpot needed for +EV
         jackpot_for_positive = self._calculate_positive_ev_jackpot(
@@ -417,31 +435,108 @@ class EVCalculator:
             analysis=analysis
         )
 
+    @staticmethod
+    def _jackpot_tier(game: LotteryGame) -> Optional[PrizeTier]:
+        """The single top tier.
+
+        For a bonus game that is "all main numbers + the bonus"; otherwise
+        "all numbers drawn". Testing `matches_required == numbers_drawn`
+        alone also matched Joker's Category II (5 main, no Joker), which was
+        then paid the entire jackpot in calculate_ev.
+        """
+        for tier in game.prize_tiers:
+            if game.has_bonus:
+                if tier.bonus_required and tier.matches_required == game.numbers_picked:
+                    return tier
+            elif tier.matches_required == game.numbers_drawn:
+                return tier
+        return None
+
+    @staticmethod
+    def _parimutuel_prize(game: LotteryGame, tier: PrizeTier) -> float:
+        """Estimate a non-jackpot pari-mutuel prize.
+
+        A tier's pool is `pct` of the prize fund, the fund is
+        `PARIMUTUEL_PAYOUT_FRACTION` of sales, and the winners in that tier
+        are `sales_lines * p`. Sales cancel:
+
+            prize = pct * payout_fraction * price_per_line / p
+
+        The old `1000.0 * pct` dropped the `1/p`, which is the whole point —
+        a rarer tier pays more. That understated Category II prizes by two to
+        three orders of magnitude.
+
+        ponytail: payout_fraction is one national average, not per-game and
+        not per-draw. Checked against Aug-2026 loto.ro reports it lands within
+        ~2-3x of actual; swap in scraped per-draw pools if the gate ever needs
+        better than that.
+        """
+        if tier.probability <= 0:
+            return 0.0
+        pct = tier.prize_pool_percentage or 0.05
+        return pct * EVCalculator._distributable_per_line(game) / tier.probability
+
+    @staticmethod
+    def _distributable_per_line(game: LotteryGame) -> float:
+        """Prize fund per line left for the pari-mutuel shares.
+
+        Fixed prizes are paid off the top and the percentages apply to what
+        remains. Verified on the 16.08.2026 6/49 report: Category IV paid
+        12,018 x 50 = 600,900, and Categories I/II/III came to exactly
+        60/20/20 of the 1,173,210 that was left.
+        """
+        fund = PARIMUTUEL_PAYOUT_FRACTION * game.stake_per_line
+        fixed = sum(
+            t.probability * t.fixed_prize
+            for t in game.prize_tiers
+            if t.fixed_prize is not None
+        )
+        return max(0.0, fund - fixed)
+
+    @staticmethod
+    def _net_prize(prize: float, tax_rate: Optional[float]) -> float:
+        """After-tax prize. `tax_rate=None` uses the Romanian schedule."""
+        if tax_rate is None:
+            return net_of_tax(prize)
+        return prize * (1 - tax_rate)
+
+    @staticmethod
+    def _gross_prize(net: float, tax_rate: Optional[float]) -> float:
+        """Inverse of _net_prize."""
+        if tax_rate is None:
+            return gross_for_net(net)
+        if tax_rate >= 1:
+            return float("inf")
+        return net / (1 - tax_rate)
+
     def _calculate_positive_ev_jackpot(self, game: LotteryGame,
                                        expected_winners: float,
-                                       tax_rate: float) -> Optional[float]:
+                                       tax_rate: Optional[float]) -> Optional[float]:
         """
         Calculate minimum jackpot needed for positive EV.
 
         Returns None if +EV is impossible (no jackpot tier).
         """
-        # Find jackpot tier
-        jackpot_tier = None
-        for tier in game.prize_tiers:
-            if tier.matches_required == game.numbers_drawn or \
-               (tier.matches_required == game.numbers_picked and
-                tier.bonus_required and game.has_bonus):
-                jackpot_tier = tier
-                break
+        jackpot_tier = self._jackpot_tier(game)
 
         if jackpot_tier is None or jackpot_tier.probability == 0:
             return None
 
-        # Calculate fixed EV from non-jackpot tiers
+        # Declared prize amounts only. `_parimutuel_prize` is a long-run
+        # approximation — it ignores tier carry-ins, replaces the winner count
+        # with its expectation, and rests on an assumed payout fraction. This
+        # number gates real spending, and crediting estimated upside here can
+        # only ever turn "block" into "spend". A false pass costs a ticket run;
+        # a false block costs nothing but the delay, so the bias goes that way.
+        #
+        # After the tier data was corrected against the 16.08.2026 reports,
+        # 6/49 Category IV (50 RON) is the only genuinely fixed prize left in
+        # any game, so 5/40 and Joker now gate on the jackpot alone.
         fixed_ev = 0.0
         for tier in game.prize_tiers:
-            if tier is not jackpot_tier and tier.fixed_prize is not None:
-                fixed_ev += tier.probability * tier.fixed_prize * (1 - tax_rate)
+            if tier is jackpot_tier or tier.fixed_prize is None:
+                continue
+            fixed_ev += tier.probability * self._net_prize(tier.fixed_prize, tax_rate)
 
         # A ticket buys `lines_per_ticket` independent lines, but the tier
         # probabilities and fixed_ev above are per line. Spread the whole-
@@ -453,13 +548,17 @@ class EVCalculator:
         # jackpot > (cost/lines - fixed_ev) * winners / (P(jackpot) * (1-tax))
         cost_per_line = game.ticket_cost / game.lines_per_ticket
         needed_ev = cost_per_line - fixed_ev
-        denominator = jackpot_tier.probability * (1 - tax_rate)
+        if jackpot_tier.probability <= 0:
+            return None
 
-        if denominator > 0:
-            min_jackpot = (needed_ev * expected_winners) / denominator
-            return max(0, min_jackpot)
-
-        return None
+        # Net *share* that closes the gap, grossed back up, then multiplied by
+        # the number of winners the jackpot is split between. Tax is
+        # progressive, so this cannot be a `/(1 - rate)` division — and the
+        # split applies once, to the gross total, not also to the per-winner
+        # share (that doubled breakeven at expected_winners=2).
+        needed_net_share = needed_ev / jackpot_tier.probability
+        gross_share = self._gross_prize(needed_net_share, tax_rate)
+        return max(0.0, gross_share * expected_winners)
 
     def _generate_analysis(self, game: LotteryGame, jackpot: float,
                           net_ev: float, jackpot_for_positive: Optional[float]) -> str:
@@ -581,7 +680,7 @@ class EVCalculator:
         multi_ev = single_ev.expected_value * num_tickets
 
         # Calculate breakeven jackpot
-        breakeven = self._calculate_positive_ev_jackpot(game, 1.0, 0.0)
+        breakeven = self._calculate_positive_ev_jackpot(game, 1.0, None)
 
         return {
             "current_jackpot": jackpot,

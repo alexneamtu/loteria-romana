@@ -184,7 +184,7 @@ def run_ev_analysis(game: str, verbose: bool = False) -> dict:
                       f"({ev_result.return_percentage:.1f}% return)")
 
         # Calculate breakeven jackpot
-        breakeven = calc._calculate_positive_ev_jackpot(lottery, 1.0, 0.0)
+        breakeven = calc._calculate_positive_ev_jackpot(lottery, 1.0, None)
 
         print(f"\nEV Summary for {game}:")
         print(f"  Ticket cost: {lottery.ticket_cost:.2f} RON")

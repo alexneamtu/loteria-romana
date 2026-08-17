@@ -10,7 +10,29 @@ from types import SimpleNamespace
 from unittest import mock
 
 import scripts.generate_recommended_picks as recommended_script
+from shared.ev_calculator import EVCalculator
 from shared.ticket_allocator import TicketAllocation
+
+
+def _breakeven(game_key: str) -> float:
+    calc = EVCalculator()
+    game = recommended_script._gate_games(calc)[game_key]  # noqa: SLF001
+    return calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
+
+
+def joker_jackpot_at(ratio: float) -> float:
+    """Joker jackpot giving this jackpot/breakeven ratio."""
+    return round(ratio * _breakeven("joker"), 2)
+
+
+def loto540_jackpot_at(ratio: float) -> float:
+    """5/40 jackpot giving this jackpot/breakeven ratio.
+
+    Derived, not hard-coded: these tests exercise the gate's skip/play/boost
+    bands, and a frozen jackpot silently changes band whenever the breakeven
+    is corrected (as it was when Category I dropped from 6/C(40,5) to 1).
+    """
+    return round(ratio * _breakeven("loto_540"), 2)
 
 
 # Subprocess-based tests spawn the real orchestrator end-to-end (loading
@@ -62,14 +84,14 @@ class TestEVGate(unittest.TestCase):
 
 class TestApplyEVGateV2(unittest.TestCase):
     # Per-line breakevens from EVCalculator (main-ticket cost / variants):
-    # joker ≈ 169M, loto_649 ≈ 108M, loto_540 ≈ 548K.
+    # joker ≈ 169M, loto_649 ≈ 108M, loto_540 ≈ 3.36M.
     SKIP_RATIO = 0.5
     BOOST_RATIO = 1.2
 
     def test_skip_when_all_ratios_below_threshold(self):
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": 200_000.0},
+            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": loto540_jackpot_at(0.36)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -79,10 +101,10 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("loto_540=", decision.reason)
 
     def test_play_when_some_ratio_in_band(self):
-        # loto_540 jackpot = ~500K (ratio ~0.91 vs ~548K breakeven)
+        # ratio ~0.91: above skip_ratio, below boost_ratio -> play
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 500_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(0.91)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -90,10 +112,10 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("loto_540=", decision.reason)
 
     def test_boost_when_max_ratio_above_threshold(self):
-        # loto_540 jackpot = ~3.5M (ratio ~6.4 vs ~548K breakeven)
+        # ratio ~6.4: well above boost_ratio -> boost
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(6.38)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -107,7 +129,7 @@ class TestApplyEVGateV2(unittest.TestCase):
         # more skips than boosts; it grew monotonically to 2240 RON.
         decision = recommended_script.apply_ev_gate_v2(
             budget=70.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(6.38)},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
             ledger_balance=2240.0,
@@ -122,7 +144,7 @@ class TestApplyEVGateV2(unittest.TestCase):
         for _ in range(6):
             decision = recommended_script.apply_ev_gate_v2(
                 budget=70.0,
-                jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+                jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": loto540_jackpot_at(6.38)},
                 skip_ratio=self.SKIP_RATIO,
                 boost_ratio=self.BOOST_RATIO,
                 ledger_balance=balance,
@@ -135,19 +157,25 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertLess(balance, 2240.0 * 0.2)
         self.assertGreater(balance, 0.0)
 
-    def test_joker_uses_main_ticket_cost_not_bundled(self):
-        # Joker jackpot = 95M. With main-ticket-only breakeven (~169M),
-        # ratio ≈ 0.56 → play. If the gate accidentally used the full
-        # ticket cost (17.5 incl. Noroc Plus), breakeven would rise to
-        # ~206M and ratio would be 0.46 → skip. Guard against that
-        # regression.
+    def test_gate_prices_the_bundle_the_allocator_actually_buys(self):
+        # The side game is bought unconditionally and its prizes are not
+        # modelled. Pricing the gate on the main game alone (14.5 of 17.5)
+        # credited zero benefit against a partial cost, so a jackpot just
+        # under the bar read as over it.
+        calc = EVCalculator()
+        for key, cost in (("joker", 17.5), ("loto_649", 28.5), ("loto_540", 22.5)):
+            self.assertEqual(recommended_script._gate_games(calc)[key].ticket_cost, cost)  # noqa: SLF001
+
+    def test_jackpot_just_under_the_bar_on_bundled_cost_skips(self):
+        # 580,000 on 5/40: 0.104 against the 20.50 main-only basis (play),
+        # 0.094 against the 22.50 actually spent (skip).
         decision = recommended_script.apply_ev_gate_v2(
-            budget=40.0,
-            jackpots={"joker": 95_000_000.0, "loto_649": 1.0, "loto_540": 1.0},
-            skip_ratio=self.SKIP_RATIO,
-            boost_ratio=self.BOOST_RATIO,
+            budget=400.0,
+            jackpots={"joker": 0.0, "loto_649": 0.0, "loto_540": 580_000.0},
+            skip_ratio=0.10,
+            boost_ratio=0.35,
         )
-        self.assertEqual(decision.action, "play")
+        self.assertEqual(decision.action, "skip")
 
     def test_missing_jackpot_treated_as_zero_ratio(self):
         decision = recommended_script.apply_ev_gate_v2(
@@ -189,8 +217,8 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
         self.assertEqual(gate_v2.call_args.kwargs["skip_ratio"], 0.10)
 
     def test_dead_band_credits_ledger_and_writes_skip_notice(self):
-        # loto_540 breakeven ≈ 548K, so a 120k jackpot is ratio ≈ 0.22:
-        # above skip_ratio (plays) but below min_ratio (every game blocked).
+        # ratio ≈ 0.22: above skip_ratio (plays) but below min_ratio
+        # (every game blocked) — the dead band.
         nonzero = TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 1},
             total_cost=20.5,
@@ -207,7 +235,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
                     "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "120000",
+                    "--loto540-jackpot", str(loto540_jackpot_at(0.22)),
                     "--ledger-path", str(ledger_path),
                     "--output-dir", str(out_dir),
                 ]):
@@ -216,7 +244,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
             self.assertEqual(json.loads(ledger_path.read_text())["balance"], 70.0)
             notice = (out_dir / "skip_notice.txt").read_text()
             self.assertIn("no game reached min ratio", notice)
-            self.assertIn("loto_540=0.22", notice)
+            self.assertIn("loto_540=0.22", notice)  # derived fixture, see loto540_jackpot_at
 
     def test_dead_band_credits_ledger_in_multi_mix_path_too(self):
         # --mixes > 1 filters allocations in its own loop; an empty result
@@ -238,7 +266,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "--mixes", "3",
                     "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "120000",
+                    "--loto540-jackpot", str(loto540_jackpot_at(0.22)),
                     "--ledger-path", str(ledger_path),
                     "--output-dir", str(out_dir),
                 ]):
@@ -271,7 +299,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
                     "--ev-min-ratio", "0.10", "--ev-boost-fraction", "0.25",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "1000000",
+                    "--loto540-jackpot", str(loto540_jackpot_at(1.82)),
                     "--ledger-path", str(ledger_path),
                 ]):
                 recommended_script.main()
@@ -510,3 +538,42 @@ class TestEVSkipBoost(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBudgetIsNotMultiplied(unittest.TestCase):
+    def test_bucket_budget_over_total_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            recommended_script._parse_bucket_budget(  # noqa: SLF001
+                "joker=400,loto_649=400,loto_540=400", 400.0
+            )
+
+    def test_bucket_budget_within_total_is_accepted(self):
+        buckets = recommended_script._parse_bucket_budget(  # noqa: SLF001
+            "joker=100,loto_649=200,loto_540=100", 400.0
+        )
+        self.assertEqual(sum(buckets.values()), 400.0)
+
+    def test_each_mix_is_a_complete_alternative_basket(self):
+        # README: --mixes emits N diverse allocations as tickets_mix{i}.json,
+        # i.e. options to pick from. Each must be a full-budget basket; only
+        # one is bought, so the ledger banks against one, not their sum.
+        seen = []
+        with mock.patch.object(
+            recommended_script, "_top_n_diverse_allocations",
+            side_effect=lambda budget, n: seen.append(budget) or [],
+        ), mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+            mock.patch("builtins.print"), \
+            mock.patch("sys.argv", [
+                "generate_recommended_picks.py", "--budget", "400", "--mixes", "4",
+            ]):
+            recommended_script.main()
+        self.assertEqual(seen, [400.0])
+
+    def test_bucket_budget_rejects_nan_and_negative_amounts(self):
+        # `nan > budget` is False and so is the allocator's `cost > nan`, so a
+        # NaN bucket bought 8 tickets of every game under a 400 RON cap.
+        for spec in ("joker=nan,loto_649=nan,loto_540=nan",
+                     "joker=200,loto_649=200,loto_540=-300"):
+            with self.assertRaises(SystemExit, msg=spec):
+                recommended_script._parse_bucket_budget(spec, 400.0)  # noqa: SLF001
