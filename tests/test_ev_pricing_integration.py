@@ -146,5 +146,48 @@ class TestGateUsesDeclaredPrizesOnly(unittest.TestCase):
         self.assertLess(game.stake_per_line, game.ticket_cost / game.lines_per_ticket)
 
 
+class TestTierDataMatchesPublishedReports(unittest.TestCase):
+    """Shares reconciled against the 16.08.2026 loto.ro draw reports.
+
+    Each category's pool is a fixed share of the fund, so `winners x prize`
+    recovers the share exactly even from a single draw.
+    """
+
+    def test_loto_540_is_50_25_25_all_parimutuel(self):
+        game = EVCalculator().create_loto_540()
+        self.assertEqual(
+            [t.prize_pool_percentage for t in game.prize_tiers], [0.50, 0.25, 0.25]
+        )
+        self.assertTrue(all(t.fixed_prize is None for t in game.prize_tiers))
+
+    def test_loto_649_category_iv_is_the_only_fixed_prize(self):
+        game = EVCalculator().create_loto_649()
+        fixed = [t for t in game.prize_tiers if t.fixed_prize is not None]
+        self.assertEqual([t.matches_required for t in fixed], [3])
+        self.assertEqual(fixed[0].fixed_prize, 50.0)  # report: 12,018 x 50.00
+
+    def test_joker_shares_sum_to_one_and_none_are_fixed(self):
+        game = EVCalculator().create_joker()
+        self.assertTrue(all(t.fixed_prize is None for t in game.prize_tiers))
+        self.assertAlmostEqual(
+            sum(t.prize_pool_percentage for t in game.prize_tiers), 1.0
+        )
+
+    def test_pool_estimate_reproduces_the_reported_540_category_ii_pool(self):
+        # 16.08.2026: Cat II pool 63,922.00 RON on 127,844 variants sold.
+        calc = EVCalculator()
+        game = calc.create_loto_540()
+        cat2 = game.prize_tiers[1]
+        pool = cat2.prize_pool_percentage * calc._distributable_per_line(game) * 127_844  # noqa: SLF001
+        self.assertAlmostEqual(pool, 63_922.00, delta=1.0)
+
+    def test_fixed_prizes_come_off_the_top_before_shares_apply(self):
+        # 6/49 Cat IV is paid first; I/II/III split what remains.
+        calc = EVCalculator()
+        game = calc.create_loto_649()
+        fund = 0.40 * game.stake_per_line
+        self.assertLess(calc._distributable_per_line(game), fund)  # noqa: SLF001
+
+
 if __name__ == "__main__":
     unittest.main()

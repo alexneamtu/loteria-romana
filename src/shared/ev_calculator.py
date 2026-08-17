@@ -97,11 +97,9 @@ class EVCalculator:
         """
         Create Loto 6/49 game configuration.
 
-        Prize structure:
-        - Category I: 6 matches (jackpot, pari-mutuel)
-        - Category II: 5 matches (pari-mutuel)
-        - Category III: 4 matches (fixed)
-        - Category IV: 3 matches (fixed)
+        Prize structure (verified against the 16.08.2026 report):
+        - Category IV: 3 matches, fixed 50 RON, paid off the top
+        - Categories I/II/III: 60/20/20 of what remains, all pari-mutuel
 
         The default ticket_cost excludes the Noroc side-game stake: EV
         tiers model main-game prizes only; side games have separate
@@ -127,22 +125,22 @@ class EVCalculator:
             PrizeTier(
                 name="Category I (6 matches)",
                 matches_required=6,
-                prize_pool_percentage=0.50,  # 50% of prize fund
+                prize_pool_percentage=0.60,
             ),
             PrizeTier(
                 name="Category II (5 matches)",
                 matches_required=5,
-                prize_pool_percentage=0.15,  # 15% of prize fund
+                prize_pool_percentage=0.20,
             ),
             PrizeTier(
                 name="Category III (4 matches)",
                 matches_required=4,
-                fixed_prize=80.0,
+                prize_pool_percentage=0.20,  # was "fixed 80"; report shows 345.57
             ),
             PrizeTier(
                 name="Category IV (3 matches)",
                 matches_required=3,
-                fixed_prize=20.0,
+                fixed_prize=50.0,  # was 20.0; report shows 50.00/winner
             ),
         ]
 
@@ -188,12 +186,12 @@ class EVCalculator:
             PrizeTier(
                 name="Category II (5 matches)",
                 matches_required=5,
-                prize_pool_percentage=0.20,
+                prize_pool_percentage=0.25,
             ),
             PrizeTier(
                 name="Category III (4 matches)",
                 matches_required=4,
-                fixed_prize=30.0,
+                prize_pool_percentage=0.25,  # was "fixed 30"; report shows 830.15
             ),
             # Loto 5/40 has three categories only — 3 matches pays nothing.
         ]
@@ -235,13 +233,13 @@ class EVCalculator:
                 name="Category I (5+Joker)",
                 matches_required=5,
                 bonus_required=True,
-                prize_pool_percentage=0.45,
+                prize_pool_percentage=0.37,
             ),
             PrizeTier(
                 name="Category II (5 matches)",
                 matches_required=5,
                 bonus_required=False,
-                prize_pool_percentage=0.10,
+                prize_pool_percentage=0.08,
             ),
             PrizeTier(
                 name="Category III (4+Joker)",
@@ -253,31 +251,31 @@ class EVCalculator:
                 name="Category IV (4 matches)",
                 matches_required=4,
                 bonus_required=False,
-                fixed_prize=100.0,
+                prize_pool_percentage=0.04,
             ),
             PrizeTier(
                 name="Category V (3+Joker)",
                 matches_required=3,
                 bonus_required=True,
-                fixed_prize=50.0,
+                prize_pool_percentage=0.05,
             ),
             PrizeTier(
                 name="Category VI (3 matches)",
                 matches_required=3,
                 bonus_required=False,
-                fixed_prize=14.0,
+                prize_pool_percentage=0.13,
             ),
             PrizeTier(
                 name="Category VII (2+Joker)",
                 matches_required=2,
                 bonus_required=True,
-                fixed_prize=14.0,
+                prize_pool_percentage=0.06,
             ),
             PrizeTier(
                 name="Category VIII (1+Joker)",
                 matches_required=1,
                 bonus_required=True,
-                fixed_prize=8.0,
+                prize_pool_percentage=0.19,
             ),
         ]
 
@@ -474,7 +472,24 @@ class EVCalculator:
         if tier.probability <= 0:
             return 0.0
         pct = tier.prize_pool_percentage or 0.05
-        return pct * PARIMUTUEL_PAYOUT_FRACTION * game.stake_per_line / tier.probability
+        return pct * EVCalculator._distributable_per_line(game) / tier.probability
+
+    @staticmethod
+    def _distributable_per_line(game: LotteryGame) -> float:
+        """Prize fund per line left for the pari-mutuel shares.
+
+        Fixed prizes are paid off the top and the percentages apply to what
+        remains. Verified on the 16.08.2026 6/49 report: Category IV paid
+        12,018 x 50 = 600,900, and Categories I/II/III came to exactly
+        60/20/20 of the 1,173,210 that was left.
+        """
+        fund = PARIMUTUEL_PAYOUT_FRACTION * game.stake_per_line
+        fixed = sum(
+            t.probability * t.fixed_prize
+            for t in game.prize_tiers
+            if t.fixed_prize is not None
+        )
+        return max(0.0, fund - fixed)
 
     @staticmethod
     def _net_prize(prize: float, tax_rate: Optional[float]) -> float:
@@ -512,10 +527,9 @@ class EVCalculator:
         # only ever turn "block" into "spend". A false pass costs a ticket run;
         # a false block costs nothing but the delay, so the bias goes that way.
         #
-        # Residual: some `fixed_prize` values below are themselves unsourced
-        # (5/40 Category III and 6/49 Category III are pari-mutuel in the
-        # official reports, not fixed), which biases breakeven slightly *down*.
-        # Correcting the tier data is the next step, not counting estimates.
+        # After the tier data was corrected against the 16.08.2026 reports,
+        # 6/49 Category IV (50 RON) is the only genuinely fixed prize left in
+        # any game, so 5/40 and Joker now gate on the jackpot alone.
         fixed_ev = 0.0
         for tier in game.prize_tiers:
             if tier is jackpot_tier or tier.fixed_prize is None:
