@@ -184,6 +184,38 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
             self.assertIn("no game reached min ratio", notice)
             self.assertIn("loto_540=0.22", notice)
 
+    def test_dead_band_credits_ledger_in_multi_mix_path_too(self):
+        # --mixes > 1 filters allocations in its own loop; an empty result
+        # made the render loop a no-op and skipped the ledger credit.
+        nonzero = TicketAllocation(
+            tickets={"joker": 0, "loto_649": 0, "loto_540": 1},
+            total_cost=20.5,
+            p_any_win=0.05,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "bank.json"
+            out_dir = Path(tmp) / "picks"
+            with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+                mock.patch.object(recommended_script, "_top_n_diverse_allocations", return_value=[nonzero, nonzero]), \
+                mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+                mock.patch("builtins.print"), \
+                mock.patch("sys.argv", [
+                    "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
+                    "--mixes", "3",
+                    "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
+                    "--joker-jackpot", "1", "--loto649-jackpot", "1",
+                    "--loto540-jackpot", "500000",
+                    "--ledger-path", str(ledger_path),
+                    "--output-dir", str(out_dir),
+                ]):
+                recommended_script.main()
+
+            self.assertEqual(json.loads(ledger_path.read_text())["balance"], 70.0)
+            self.assertIn(
+                "no game reached min ratio",
+                (out_dir / "skip_notice.txt").read_text(),
+            )
+
     def test_no_double_credit_when_global_gate_skips(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger_path = Path(tmp) / "bank.json"

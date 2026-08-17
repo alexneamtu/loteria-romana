@@ -343,6 +343,15 @@ def apply_ev_gate(
     return filtered, details
 
 
+def _no_game_passed_reason(min_ratio: float, gate_details: dict) -> str:
+    """Skip reason for when the per-game filter blocked every game."""
+    ratios = "  ".join(
+        f"{g}={gate_details.get(g, {}).get('ratio', 0):.2f}"
+        for g in ("joker", "loto_649", "loto_540")
+    )
+    return f"no game reached min ratio {min_ratio} ({ratios})"
+
+
 @dataclass
 class EVDecision:
     action: str  # "play" | "skip" | "boost"
@@ -513,8 +522,9 @@ def main():
         allocations = _top_n_diverse_allocations(effective_budget, args.mixes)
         if args.ev_gate:
             filtered = []
+            mix_details: dict = {}
             for alloc in allocations:
-                alloc, _ = apply_ev_gate(
+                alloc, mix_details = apply_ev_gate(
                     allocation=alloc,
                     enabled=True,
                     min_ratio=args.ev_min_ratio,
@@ -523,6 +533,25 @@ def main():
                 if alloc.p_any_win > 0:
                     filtered.append(alloc)
             allocations = filtered
+            if not allocations:
+                # Same hole as the single-allocation path below: an empty
+                # list makes the loop a no-op and the budget is neither
+                # spent nor banked.
+                record_skip(_no_game_passed_reason(args.ev_min_ratio, mix_details))
+                persist_generation_run(
+                    budget=effective_budget,
+                    seed=args.seed,
+                    ev_gate=True,
+                    ev_min_ratio=args.ev_min_ratio,
+                    jackpots=jackpots,
+                    allocation={
+                        "tickets": {}, "total_cost": 0.0,
+                        "p_any_win": 0.0, "budget": effective_budget,
+                    },
+                    gate_details=mix_details,
+                    tickets=[],
+                )
+                return
 
         all_db_rows: list[dict] = []
         for i, alloc in enumerate(allocations, 1):
@@ -599,13 +628,7 @@ def main():
 
         if allocation.p_any_win == 0:
             if args.ev_gate:
-                ratios = "  ".join(
-                    f"{g}={gate_details.get(g, {}).get('ratio', 0):.2f}"
-                    for g in ("joker", "loto_649", "loto_540")
-                )
-                record_skip(
-                    f"no game reached min ratio {args.ev_min_ratio} ({ratios})"
-                )
+                record_skip(_no_game_passed_reason(args.ev_min_ratio, gate_details))
             persist_generation_run(
                 budget=effective_budget,
                 seed=args.seed,
