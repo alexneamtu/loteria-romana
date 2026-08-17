@@ -10,6 +10,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .pricing import VARIANTS_PER_TICKET
+from .ticket_allocator import _p_any_win, _p_ticket_any_win
+
+# Telegram caps messages at 4096 chars; leave room for the fence and header.
+_MAX_MSG_CHARS = 3800
+
+
+def _odds(p: float) -> str:
+    return f"1 in {round(1 / p):,}" if p > 0 else "—"
+
 _GAME_LABEL = {"joker": "JOKER", "loto_649": "LOTO 6/49", "loto_540": "LOTO 5/40"}
 _GAME_EMOJI = {"joker": "🃏", "loto_649": "🎱", "loto_540": "🎯"}
 _SIDE_NAME = {"joker": "Noroc Plus", "loto_649": "Noroc", "loto_540": "Super Noroc"}
@@ -24,19 +34,58 @@ def _format_variant(game: str, v: dict) -> str:
 
 
 def format_tickets(tickets: list[dict], draw_date: str) -> list[str]:
-    messages: list[str] = []
+    """One message per game: the bulletins to fill in, in buy order.
+
+    Each block is one physical ticket — the variant lines and the side-game
+    number go on the same bulletin. Split across messages when a game's
+    tickets exceed Telegram's size limit.
+    """
+    by_game: dict[str, list[dict]] = {}
     for t in tickets:
-        game = t["game"]
-        header = f"{_GAME_EMOJI[game]} *{_GAME_LABEL[game]} Ticket ({t['strategy']}) - {draw_date}*"
-        cost_line = f"Cost: {t['cost_ron']} RON"
-        body_lines = [
-            f"V{i}: {_format_variant(game, v)}"
-            for i, v in enumerate(t["variants"], start=1)
+        by_game.setdefault(t["game"], []).append(t)
+
+    messages: list[str] = []
+    for game, group in _by_best_odds(by_game):
+        per_ticket = VARIANTS_PER_TICKET[game]
+        strategies = sorted({t["strategy"] for t in group})
+        header = [
+            f"{_GAME_EMOJI[game]} *{_GAME_LABEL[game]} — buy {len(group)} ticket(s)* - {draw_date}",
+            f"Each bulletin: {per_ticket} variants + {_SIDE_NAME[game]}"
+            f" = {group[0]['cost_ron']} RON",
+            f"Total: {sum(t['cost_ron'] for t in group):.2f} RON"
+            f" · built by {', '.join(strategies)}",
+            f"Any prize: {_odds(_p_ticket_any_win(game))} per ticket",
         ]
-        side_line = f"{_SIDE_NAME[game]}: {t['side_game_number']}"
-        text = "\n".join([header, cost_line, "```", *body_lines, side_line, "```"])
-        messages.append(text)
+        # A ticket that does not fill the bulletin cannot be bought as printed.
+        wrong = [i for i, t in enumerate(group, 1) if len(t["variants"]) != per_ticket]
+        if wrong:
+            header.append(f"⚠️ ticket(s) {wrong} do not have {per_ticket} variants")
+
+        blocks = []
+        for i, t in enumerate(group, start=1):
+            blocks.append("\n".join([
+                f"#{i}",
+                *(f" V{j} {_format_variant(game, v)}"
+                  for j, v in enumerate(t["variants"], start=1)),
+                f" {_SIDE_NAME[game]}: {t['side_game_number']}",
+            ]))
+        messages.extend(_chunk("\n".join(header), blocks))
     return messages
+
+
+def _chunk(header: str, blocks: list[str]) -> list[str]:
+    """Pack blocks into fenced messages under Telegram's size limit."""
+    out, cur = [], []
+    for b in blocks:
+        candidate = cur + [b]
+        if cur and len(header) + sum(len(x) + 1 for x in candidate) + 8 > _MAX_MSG_CHARS:
+            out.append("\n".join([header, "```", *cur, "```"]))
+            cur = [b]
+        else:
+            cur = candidate
+    if cur:
+        out.append("\n".join([header, "```", *cur, "```"]))
+    return out
 
 
 def format_summary(
@@ -46,19 +95,27 @@ def format_summary(
     total_cost_ron: float,
     draw_date: str,
 ) -> str:
-    games_count: dict[str, int] = {}
+    games: dict[str, list[dict]] = {}
     for t in tickets:
-        games_count[t["game"]] = games_count.get(t["game"], 0) + 1
-    if not games_count:
-        body = "_no tickets (EV gate skipped this draw)_"
-    else:
-        body = "\n".join(
-            f"- {_DISPLAY_GAME[g]}: {n} ticket(s)"
-            for g, n in games_count.items()
-        )
+        games.setdefault(t["game"], []).append(t)
     header = f"🎰 *Lottery Picks - {draw_date}*"
     totals = f"Budget: {budget_ron} RON\nSpent:  {total_cost_ron} RON"
-    return "\n".join([header, "", totals, "", body])
+    if not games:
+        return "\n".join([header, "", totals, "", "_no tickets (EV gate skipped this draw)_"])
+
+    body = "\n".join(
+        f"- {_DISPLAY_GAME[g]}: {len(ts)} × ({VARIANTS_PER_TICKET[g]} variants"
+        f" + {_SIDE_NAME[g]}) = {sum(t['cost_ron'] for t in ts):.2f} RON"
+        f" · any prize {_odds(_p_ticket_any_win(g))}/ticket"
+        for g, ts in _by_best_odds(games)
+    )
+    p_total = _p_any_win({g: len(ts) for g, ts in games.items()})
+    chance = f"P(win anything this draw): {p_total:.1%}"
+    return "\n".join([header, "", totals, "", "Buy (best odds first):", body, "", chance])
+
+
+def _by_best_odds(games: dict[str, list[dict]]) -> list[tuple[str, list[dict]]]:
+    return sorted(games.items(), key=lambda kv: -_p_ticket_any_win(kv[0]))
 
 
 def emit_messages_for_workflow(tickets_json_path: Path, draw_date: str) -> list[str]:
