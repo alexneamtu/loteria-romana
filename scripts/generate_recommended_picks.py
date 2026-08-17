@@ -199,9 +199,9 @@ def load_loto_540_draws():
     return load_draws(csv_path)
 
 
-def _builder_for_spec(spec: str):
+def _builder_for_spec(spec: str, n_tickets: int = 1):
     if spec == "independent":
-        return IndependentBuilder(n_tickets=1)
+        return IndependentBuilder(n_tickets=n_tickets)
     if spec == "core_share":
         return CoreShareBuilder()
     if spec.startswith("wheel:"):
@@ -232,15 +232,26 @@ def _build_tickets_for_allocation(allocation, rng, half_life, half_life_mode, st
         draws_list = _GAME_LOADERS[game]()
         draws_main = [d.main_numbers for d in draws_list]
         draw_dates = [d.date for d in draws_list]
-        for _ in range(n):
-            ctx = BuilderContext(
-                game=game,
-                config=_GAME_CONFIGS[game],
-                draws=draws_main,
-                draw_dates=draw_dates,
-                rng=rng,
-            )
-            tickets.extend(_builder_for_spec(strategy_spec).build(ctx))
+        ctx = BuilderContext(
+            game=game,
+            config=_GAME_CONFIGS[game],
+            draws=draws_main,
+            draw_dates=draw_dates,
+            rng=rng,
+        )
+        if strategy_spec == "independent":
+            # IndependentBuilder runs one ensemble backtest per build() call
+            # regardless of ticket count, so build all n tickets at once.
+            # Looping per ticket re-ran the whole backtest n times — fine at
+            # ~3 tickets, but a boosted 28-ticket run took ~1 min locally and
+            # ~18 min on the ARM runner (no optimized BLAS).
+            tickets.extend(_builder_for_spec(strategy_spec, n_tickets=n).build(ctx))
+        else:
+            # CoreShare/Wheel emit one ticket per call from cheap signal
+            # functions (no backtest), so the per-ticket loop costs nothing.
+            builder = _builder_for_spec(strategy_spec)
+            for _ in range(n):
+                tickets.extend(builder.build(ctx))
     return tickets
 
 

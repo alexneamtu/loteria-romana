@@ -303,6 +303,39 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
             self.assertEqual(json.loads(ledger_path.read_text())["balance"], 70.0)
 
 
+class TestBuilderInvocation(unittest.TestCase):
+    def test_independent_allocation_builds_in_one_call_per_game(self):
+        # IndependentBuilder runs one ensemble backtest per build() call, so
+        # a game's n tickets must be built in a single call — not n calls,
+        # which re-ran the backtest n times (~18 min for a boosted run on
+        # the ARM runner).
+        alloc = TicketAllocation(
+            tickets={"joker": 0, "loto_649": 0, "loto_540": 5},
+            total_cost=112.5,
+            p_any_win=0.1,
+        )
+        calls: list[int] = []
+
+        class _FakeBuilder:
+            def __init__(self, n: int):
+                self.n = n
+
+            def build(self, ctx):
+                return [object() for _ in range(self.n)]
+
+        def _fake_spec(spec, n_tickets=1):
+            calls.append(n_tickets)
+            return _FakeBuilder(n_tickets)
+
+        with mock.patch.object(recommended_script, "_builder_for_spec", side_effect=_fake_spec):
+            tickets = recommended_script._build_tickets_for_allocation(
+                alloc, random.Random(1), 50.0, "draws", "independent"
+            )
+
+        self.assertEqual(calls, [5])
+        self.assertEqual(len(tickets), 5)
+
+
 class TestGenerationDBPersistenceHook(unittest.TestCase):
     def test_main_persists_even_when_allocation_has_zero_win_probability(self):
         zero_allocation = TicketAllocation(

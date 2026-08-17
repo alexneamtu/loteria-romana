@@ -76,6 +76,18 @@ class TestOptimizeTicketPortfolio(unittest.TestCase):
         selected = optimize_ticket_portfolio([], select_count=5, pool_size=45)
         self.assertEqual(len(selected), 0)
 
+    def test_scales_to_large_pool(self):
+        # A boosted run selects ~112 lines from ~448 candidates. The old
+        # O(select² · candidates) greedy took minutes here; the incremental
+        # version is instant. Mere completion of this test is the perf guard.
+        rng = random.Random(7)
+        candidates = [sorted(rng.sample(range(1, 41), 5)) for _ in range(448)]
+        selected = optimize_ticket_portfolio(candidates, select_count=112, pool_size=40)
+        self.assertEqual(len(selected), 112)
+        candidate_set = {tuple(c) for c in candidates}
+        for s in selected:
+            self.assertIn(tuple(s), candidate_set)
+
 
 class TestDiversityScore(unittest.TestCase):
     def test_identical_tickets_low_score(self):

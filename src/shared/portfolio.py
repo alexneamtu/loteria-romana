@@ -94,10 +94,6 @@ def optimize_ticket_portfolio(
     if len(candidates) <= select_count:
         return list(candidates)
 
-    # Start with the ticket covering the most unique numbers
-    selected_indices: list[int] = []
-    selected_sets: list[set[int]] = []
-
     # Pick first ticket (widest spread)
     best_first = 0
     best_score = -1.0
@@ -110,35 +106,39 @@ def optimize_ticket_portfolio(
             best_score = spread
             best_first = i
 
-    selected_indices.append(best_first)
-    selected_sets.append(set(candidates[best_first]))
+    # Precompute candidate sets once and track each candidate's cumulative
+    # overlap against the selected set incrementally. The naive version
+    # rebuilt set(ticket) and re-summed overlap against every selected line
+    # on every round — O(select_count² · candidates) with a set-intersection
+    # inside, which blew up to ~10 min on a boosted 112-from-448 selection.
+    # Dividing by the (constant-per-round) selected count doesn't change the
+    # argmin, so we compare raw cumulative overlap directly. Same greedy
+    # result, ~O(select_count · candidates).
+    cand_sets = [frozenset(c) for c in candidates]
+    selected_indices: list[int] = [best_first]
+    selected_flags = [False] * len(candidates)
+    selected_flags[best_first] = True
+    cum_overlap = [len(cand_sets[i] & cand_sets[best_first]) for i in range(len(candidates))]
 
-    # Greedily add tickets with minimum overlap
     while len(selected_indices) < select_count:
         best_idx = -1
-        best_avg_overlap = float("inf")
-
-        for i, ticket in enumerate(candidates):
-            if i in selected_indices:
+        best_overlap = float("inf")
+        for i in range(len(candidates)):
+            if selected_flags[i]:
                 continue
-
-            ticket_set = set(ticket)
-            total_overlap = 0.0
-            for s_set in selected_sets:
-                overlap = len(ticket_set & s_set)
-                total_overlap += overlap
-
-            avg_overlap = total_overlap / len(selected_sets)
-
-            if avg_overlap < best_avg_overlap:
-                best_avg_overlap = avg_overlap
+            if cum_overlap[i] < best_overlap:
+                best_overlap = cum_overlap[i]
                 best_idx = i
 
         if best_idx < 0:
             break
 
         selected_indices.append(best_idx)
-        selected_sets.append(set(candidates[best_idx]))
+        selected_flags[best_idx] = True
+        new_set = cand_sets[best_idx]
+        for i in range(len(candidates)):
+            if not selected_flags[i]:
+                cum_overlap[i] += len(cand_sets[i] & new_set)
 
     return [candidates[i] for i in selected_indices]
 
