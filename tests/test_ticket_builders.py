@@ -18,6 +18,22 @@ def _649_draws():
     return [[1, 5, 17, 23, 34, 49], [3, 12, 27, 31, 38, 44]] * 20
 
 
+def _biased_649_draws():
+    # Frequency-biased history (low numbers popular) so the softmax signal and
+    # the crowd-avoidance signal disagree — the case where a pure
+    # anti_crowding_score sort clusters the kept variants.
+    g = random.Random(777)
+    weights = [1.0 / n for n in range(1, 50)]
+    pool = list(range(1, 50))
+    draws = []
+    for _ in range(200):
+        line: set[int] = set()
+        while len(line) < 6:
+            line.add(g.choices(pool, weights=weights)[0])
+        draws.append(sorted(line))
+    return draws
+
+
 def _540_draws():
     return [[2, 9, 15, 27, 34, 38], [1, 5, 19, 22, 28, 40]] * 20
 
@@ -118,6 +134,84 @@ class TestIndependentBuilder(unittest.TestCase):
         )
         tickets = IndependentBuilder(n_tickets=3).build(ctx)
         self.assertEqual(len(tickets), 3)
+
+    def test_anti_crowding_keeps_variants_more_disjoint_than_score_sort(self):
+        # Sorting candidates by anti_crowding_score alone clusters the kept
+        # variants onto the same "unpopular" numbers, so they co-lose on the
+        # same near-miss and P(>=1 prize) drops below even independent
+        # variants. The builder must instead keep a disjoint subset of the
+        # least-crowded candidates so the fixed spend buys P(>=1 prize) closer
+        # to its union-bound ceiling. Compared against the naive score-sort on
+        # the *same* candidate pool (global seed pinned for determinism).
+        import itertools
+
+        from shared.crowding import anti_crowding_score
+        from shared.ensemble_blend import generate_blended_picks
+
+        cfg = LOTO_649_CONFIG
+        draws = _biased_649_draws()
+
+        def overlap(sets):
+            return sum(len(a & b) for a, b in itertools.combinations(sets, 2))
+
+        random.seed(2024)
+        t = IndependentBuilder(n_tickets=1).build(
+            BuilderContext(
+                game="loto_649", config=cfg, draws=draws,
+                draw_dates=None, rng=random.Random(0),
+            )
+        )[0]
+        kept_overlap = overlap([set(v.main_numbers) for v in t.variants])
+
+        # Reproduce the exact candidate pool the builder saw, then apply the
+        # old naive selection (top-N by anti_crowding_score).
+        random.seed(2024)
+        n_candidates = 3 * IndependentBuilder().anti_crowding_candidates
+        picks = generate_blended_picks(
+            cfg, draws, n_candidates, random.Random(0), draw_dates=None,
+        )
+        naive = sorted(
+            picks, key=lambda p: anti_crowding_score(p, cfg.pool_size),
+            reverse=True,
+        )[:3]
+        naive_overlap = overlap([set(x) for x in naive])
+
+        self.assertGreater(naive_overlap, 0)  # scenario actually clusters
+        self.assertLess(kept_overlap, naive_overlap)
+
+
+class TestIndependentBuilderAntiCrowding(unittest.TestCase):
+    def test_anti_crowding_on_by_default(self):
+        # Production uses IndependentBuilder with no strategy flag, so the
+        # crowd-avoidance lever must be reachable there without opt-in.
+        self.assertTrue(IndependentBuilder().anti_crowding)
+
+    def test_default_beats_disabled_on_average_score(self):
+        from shared.crowding import anti_crowding_score
+
+        base_scores: list[float] = []
+        acr_scores: list[float] = []
+        for seed in range(3):
+            ctx_off = BuilderContext(
+                game="loto_649", config=LOTO_649_CONFIG, draws=_649_draws(),
+                draw_dates=None, rng=random.Random(seed),
+            )
+            ctx_on = BuilderContext(
+                game="loto_649", config=LOTO_649_CONFIG, draws=_649_draws(),
+                draw_dates=None, rng=random.Random(seed),
+            )
+            t_off = IndependentBuilder(n_tickets=8, anti_crowding=False).build(ctx_off)
+            t_on = IndependentBuilder(n_tickets=8).build(ctx_on)  # default: on
+            for t in t_off:
+                for v in t.variants:
+                    base_scores.append(anti_crowding_score(list(v.main_numbers), 49))
+            for t in t_on:
+                for v in t.variants:
+                    acr_scores.append(anti_crowding_score(list(v.main_numbers), 49))
+        self.assertGreater(
+            sum(acr_scores) / len(acr_scores),
+            sum(base_scores) / len(base_scores),
+        )
 
 
 class TestCoreShareBuilder(unittest.TestCase):

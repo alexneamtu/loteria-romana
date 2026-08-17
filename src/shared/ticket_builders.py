@@ -88,26 +88,67 @@ def _make_ticket(
 
 
 class IndependentBuilder:
-    """Baseline: each variant is an independent blended pick."""
+    """Baseline: each variant is an independent blended pick.
+
+    With `anti_crowding=True` (the default, and the only builder on the
+    scheduled production path), the builder over-generates candidate lines
+    and keeps the least-crowded ones. This raises `E[payout | pari-mutuel
+    win]` by reducing expected co-winners; it has zero effect on P(win) and
+    zero effect on fixed-prize tiers.
+    """
 
     strategy = "independent"
 
-    def __init__(self, n_tickets: int = 1):
+    def __init__(
+        self,
+        n_tickets: int = 1,
+        anti_crowding: bool = True,
+        anti_crowding_candidates: int = 10,
+    ):
         if n_tickets < 1:
             raise ValueError("n_tickets must be >= 1")
         self.n_tickets = n_tickets
+        self.anti_crowding = anti_crowding
+        self.anti_crowding_candidates = max(1, anti_crowding_candidates)
 
     def build(self, ctx: BuilderContext) -> list[Ticket]:
         variants_per = VARIANTS_PER_TICKET[ctx.game]
         total_lines = self.n_tickets * variants_per
 
+        # ponytail: naive top-K by score over an over-generated pool; a
+        # crowd-weighted portfolio pass could do better if it ever matters.
+        n_candidates = (
+            total_lines * self.anti_crowding_candidates
+            if self.anti_crowding
+            else total_lines
+        )
         picks = generate_blended_picks(
             ctx.config,
             ctx.draws,
-            total_lines,
+            n_candidates,
             ctx.rng,
             draw_dates=ctx.draw_dates,
         )
+        if self.anti_crowding and len(picks) > total_lines:
+            from .crowding import anti_crowding_score
+            from .portfolio import optimize_ticket_portfolio
+
+            # Keep the least-crowded candidates (raises E[payout | win]), then
+            # pick the most mutually-disjoint subset among them. Sorting by
+            # anti_crowding_score alone clusters variants onto the same
+            # "unpopular" numbers, so they co-lose on the same near-miss and
+            # P(>=1 prize) drops below even independent variants. Disjoint
+            # variants push P(>=1 prize) toward its union-bound ceiling.
+            # ponytail: shortlist width (*4) trades E[payout] for P(>=1);
+            # widen it if disjointness matters more than crowd-avoidance.
+            shortlist = sorted(
+                picks,
+                key=lambda p: anti_crowding_score(p, ctx.config.pool_size),
+                reverse=True,
+            )[: min(len(picks), total_lines * 4)]
+            picks = optimize_ticket_portfolio(
+                shortlist, total_lines, ctx.config.pool_size
+            )
 
         tickets: list[Ticket] = []
         for i in range(self.n_tickets):
