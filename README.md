@@ -15,8 +15,8 @@ Two GitHub Actions workflows run the whole pipeline:
 
 | Workflow | Schedule | Purpose |
 |---|---|---|
-| `generate-picks.yml` | Sun + Thu at 10:00 UTC | Scrape current jackpots, run EV gate, generate ticket(s), post to Telegram |
-| `check-results.yml` | Mon + Fri at 09:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
+| `generate-picks.yml` | Sun + Thu at 06:00 UTC | Scrape current jackpots, run EV gate, generate ticket(s), post to Telegram |
+| `check-results.yml` | Mon + Fri at 06:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
 
 Both commit their artifacts back to `main` so historical state survives across runs.
 
@@ -36,9 +36,13 @@ The orchestrator emits one `picks/tickets.json` per run with the allocation, var
 
 Every scheduled run scrapes the current jackpots from the loto.ro homepage and computes `ratio = jackpot / breakeven` per game, where **breakeven** is the jackpot amount at which a ticket's expected value crosses zero.
 
-- `ratio < 0.5` (skip threshold) → no tickets, credit the day's budget to the ledger.
-- `0.5 ≤ ratio ≤ 1.2` → play normally at the scheduled budget.
-- `ratio > 1.2` (boost threshold) → debit the ledger to increase the effective budget on high-EV rollovers.
+- `ratio < 0.10` (skip threshold) → no tickets, credit the day's budget to the ledger.
+- `0.10 ≤ ratio ≤ 0.35` → play normally at the scheduled budget, using only the games that clear 0.10.
+- `ratio > 0.35` (boost threshold) → debit the ledger to increase the effective budget on high rollovers.
+
+**These thresholds are relative, not break-even.** A ratio of 1.0 means the jackpot has reached the point where a ticket's EV crosses zero — for Joker that is ~346M RON and for 6/49 ~337M RON, roughly 5× the largest jackpots those games have ever paid. Gating at `ratio ≥ 1.0` therefore means never playing, which is the mathematically correct answer and also a pipeline that produces nothing. The thresholds above instead ask "is this jackpot high relative to its own range?" and accept a negative EV. Only Loto 5/40 (breakeven ~2.23M RON) can realistically approach 1.0.
+
+`--ev-skip-ratio` defaults to `--ev-min-ratio` so the global skip gate and the per-game filter cannot disagree. Setting skip lower than min only widens the band where a draw is nominally played but every game is filtered out; that case now credits the ledger and posts a reason rather than silently dropping the budget.
 
 Breakeven is computed from the **main-ticket cost only** (variants + processing fee) — side-game stakes have separate prize ladders not scored by the EV model. Each skip/play/boost decision includes the per-game ratios in its reason (e.g. `all ratios < 0.5 (joker=0.19  loto_649=0.05  loto_540=0.28)`), so the Telegram notice explains *why* the gate fired. The ledger persists at `data/budget_bank.json` and is committed on every run.
 

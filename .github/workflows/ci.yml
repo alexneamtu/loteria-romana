@@ -28,5 +28,9 @@ jobs:
 
       - name: Run tests
         # -n auto spreads tests across all available CPU cores (4 on
-        # ubuntu-latest runners).
+        # ubuntu-latest runners). SLOW_TESTS=1 adds the ensemble_blend
+        # pipeline and the generate_recommended_picks orchestrator tests —
+        # i.e. the code the scheduled workflow actually runs — for ~30s.
+        env:
+          SLOW_TESTS: '1'
         run: PYTHONPATH=src python -m pytest tests/ -v -n auto --dist=loadfile

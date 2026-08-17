@@ -126,6 +126,81 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("joker=0.00", decision.reason)
 
 
+class TestGateThresholdsStayCoherent(unittest.TestCase):
+    """The global skip gate and the per-game filter must agree by default.
+
+    They used to default to 0.5 and 0.8 independently, so a draw whose max
+    ratio landed between them was "played" with every game filtered out:
+    no tickets, no ledger credit, budget silently lost.
+    """
+
+    def test_skip_ratio_defaults_to_min_ratio(self):
+        args = recommended_script.build_parser().parse_args(["--budget", "70", "--ev-gate"])
+        self.assertIsNone(args.ev_skip_ratio)
+
+        with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(recommended_script, "apply_ev_gate_v2") as gate_v2, \
+            mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+            mock.patch.object(recommended_script.BudgetLedger, "credit_skip"), \
+            mock.patch.object(recommended_script.BudgetLedger, "balance", return_value=0.0), \
+            mock.patch("builtins.print"), \
+            mock.patch("sys.argv", [
+                "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
+                "--ev-min-ratio", "0.10",
+                "--joker-jackpot", "1", "--loto649-jackpot", "1", "--loto540-jackpot", "1",
+            ]):
+            gate_v2.return_value = recommended_script.EVDecision(action="skip", reason="test")
+            recommended_script.main()
+
+        self.assertEqual(gate_v2.call_args.kwargs["skip_ratio"], 0.10)
+
+    def test_dead_band_credits_ledger_and_writes_skip_notice(self):
+        # loto_540 breakeven ≈ 2.23M, so a 500k jackpot is ratio ≈ 0.22:
+        # above skip_ratio (plays) but below min_ratio (every game blocked).
+        nonzero = TicketAllocation(
+            tickets={"joker": 0, "loto_649": 0, "loto_540": 1},
+            total_cost=20.5,
+            p_any_win=0.05,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "bank.json"
+            out_dir = Path(tmp) / "picks"
+            with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+                mock.patch.object(recommended_script, "best_allocation", return_value=nonzero), \
+                mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+                mock.patch("builtins.print"), \
+                mock.patch("sys.argv", [
+                    "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
+                    "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
+                    "--joker-jackpot", "1", "--loto649-jackpot", "1",
+                    "--loto540-jackpot", "500000",
+                    "--ledger-path", str(ledger_path),
+                    "--output-dir", str(out_dir),
+                ]):
+                recommended_script.main()
+
+            self.assertEqual(json.loads(ledger_path.read_text())["balance"], 70.0)
+            notice = (out_dir / "skip_notice.txt").read_text()
+            self.assertIn("no game reached min ratio", notice)
+            self.assertIn("loto_540=0.22", notice)
+
+    def test_no_double_credit_when_global_gate_skips(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "bank.json"
+            with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+                mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+                mock.patch("builtins.print"), \
+                mock.patch("sys.argv", [
+                    "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
+                    "--ev-min-ratio", "0.10",
+                    "--joker-jackpot", "1", "--loto649-jackpot", "1", "--loto540-jackpot", "1",
+                    "--ledger-path", str(ledger_path),
+                ]):
+                recommended_script.main()
+
+            self.assertEqual(json.loads(ledger_path.read_text())["balance"], 70.0)
+
+
 class TestGenerationDBPersistenceHook(unittest.TestCase):
     def test_main_persists_even_when_allocation_has_zero_win_probability(self):
         zero_allocation = TicketAllocation(

@@ -88,8 +88,11 @@ def build_parser():
         help="Enable EV/jackpot gate before generating picks",
     )
     parser.add_argument(
-        "--ev-min-ratio", type=float, default=0.8,
-        help="Minimum jackpot/breakeven ratio required when EV gate is enabled",
+        "--ev-min-ratio", type=float, default=0.10,
+        help=(
+            "Minimum jackpot/breakeven ratio required when EV gate is enabled. "
+            "Also the default skip threshold — see --ev-skip-ratio"
+        ),
     )
     parser.add_argument(
         "--joker-jackpot", type=float,
@@ -111,11 +114,15 @@ def build_parser():
         ),
     )
     parser.add_argument(
-        "--ev-skip-ratio", type=float, default=0.5,
-        help="Skip draw if all games' jackpot/breakeven ratio < this",
+        "--ev-skip-ratio", type=float, default=None,
+        help=(
+            "Skip draw if all games' jackpot/breakeven ratio < this. "
+            "Defaults to --ev-min-ratio; setting it lower only widens the "
+            "band where the draw is played but every game is filtered out"
+        ),
     )
     parser.add_argument(
-        "--ev-boost-ratio", type=float, default=1.2,
+        "--ev-boost-ratio", type=float, default=0.35,
         help="Boost budget from ledger if any game's ratio > this",
     )
     parser.add_argument(
@@ -413,6 +420,13 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
+    # One knob by default. The skip gate (global, on max ratio) and the
+    # per-game filter used to default to 0.5 and 0.8 independently, so any
+    # draw landing between them was "played" with every game filtered out —
+    # no tickets, no ledger credit, budget silently lost.
+    if args.ev_skip_ratio is None:
+        args.ev_skip_ratio = args.ev_min_ratio
+
     try:
         half_life, half_life_mode = resolve_recency_settings(
             args.half_life,
@@ -450,26 +464,35 @@ def main():
         output_dir.mkdir(parents=True, exist_ok=True)
 
     effective_budget = args.budget
+    ledger = BudgetLedger(Path(args.ledger_path)) if args.ev_gate else None
+    draw_date = datetime.now(UTC).date().isoformat()
+
+    def record_skip(reason: str) -> None:
+        """Credit the day's budget back to the ledger and emit a skip notice.
+
+        Every no-tickets exit must route through here. The per-game filter
+        can zero an allocation after the global gate said "play"; without
+        this the budget was neither spent nor banked.
+        """
+        if ledger is not None:
+            ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=reason)
+            print(f"EV gate: SKIP — {reason}. Ledger balance: {ledger.balance():.2f} RON")
+        if output_dir:
+            balance = f"Ledger balance: {ledger.balance():.2f} RON\n" if ledger else ""
+            (output_dir / "skip_notice.txt").write_text(
+                f"🎰 *Lottery Picks - {draw_date}*\n\n_Skipped: {reason}_\n{balance}",
+                encoding="utf-8",
+            )
+
     if args.ev_gate:
-        ledger_path = Path(args.ledger_path)
-        ledger = BudgetLedger(ledger_path)
         decision = apply_ev_gate_v2(
             budget=args.budget,
             jackpots=jackpots,
             skip_ratio=args.ev_skip_ratio,
             boost_ratio=args.ev_boost_ratio,
         )
-        draw_date = datetime.now(UTC).date().isoformat()
         if decision.action == "skip":
-            ledger.credit_skip(draw_date=draw_date, amount=args.budget, reason=decision.reason)
-            print(f"EV gate: SKIP — {decision.reason}. Ledger balance: {ledger.balance():.2f} RON")
-            if output_dir:
-                skip_msg = (
-                    f"🎰 *Lottery Picks - {draw_date}*\n\n"
-                    f"_Skipped: {decision.reason}_\n"
-                    f"Ledger balance: {ledger.balance():.2f} RON\n"
-                )
-                (output_dir / "skip_notice.txt").write_text(skip_msg, encoding="utf-8")
+            record_skip(decision.reason)
             persist_generation_run(
                 budget=args.budget,
                 seed=args.seed,
@@ -575,6 +598,14 @@ def main():
                 )
 
         if allocation.p_any_win == 0:
+            if args.ev_gate:
+                ratios = "  ".join(
+                    f"{g}={gate_details.get(g, {}).get('ratio', 0):.2f}"
+                    for g in ("joker", "loto_649", "loto_540")
+                )
+                record_skip(
+                    f"no game reached min ratio {args.ev_min_ratio} ({ratios})"
+                )
             persist_generation_run(
                 budget=effective_budget,
                 seed=args.seed,
