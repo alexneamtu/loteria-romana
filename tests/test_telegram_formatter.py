@@ -163,3 +163,30 @@ class TestBuyList(unittest.TestCase):
         self.assertGreater(len(msgs), 1)
         self.assertTrue(all(len(m) < 4096 for m in msgs))
         self.assertEqual(sum(m.count("#") for m in msgs), 80)
+
+
+class TestOdds(unittest.TestCase):
+    def _ticket(self, game, n, cost):
+        return {
+            "game": game,
+            "variants": [{"main_numbers": [2, 9, 15, 27, 34], "bonus_number": 3 if game == "joker" else None}] * n,
+            "side_game_number": "012345",
+            "strategy": "independent",
+            "cost_ron": cost,
+        }
+
+    def test_summary_ranks_games_by_odds_and_totals_chance(self):
+        tickets = [self._ticket("loto_540", 4, 22.5), self._ticket("joker", 2, 17.5)]
+        msg = format_summary(tickets, budget_ron=40.0, total_cost_ron=40.0, draw_date="2026-08-17")
+        self.assertIn("best odds first", msg)
+        self.assertIn("P(win anything this draw):", msg)
+        # joker (~1 in 17) must be listed before 5/40 (~1 in 319)
+        self.assertLess(msg.index("Joker"), msg.index("Loto 5/40"))
+        self.assertIn("1 in 17", msg)
+
+    def test_ticket_messages_ordered_best_odds_first_with_odds_line(self):
+        tickets = [self._ticket("loto_540", 4, 22.5), self._ticket("joker", 2, 17.5)]
+        msgs = format_tickets(tickets, draw_date="2026-08-17")
+        self.assertIn("JOKER", msgs[0])
+        self.assertIn("LOTO 5/40", msgs[1])
+        self.assertIn("Any prize: 1 in 17 per ticket", msgs[0])
