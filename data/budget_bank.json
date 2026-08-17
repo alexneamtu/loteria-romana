@@ -1,5 +1,5 @@
 {
-  "balance": 1680.0,
+  "balance": 1277.5,
   "entries": [
     {
       "kind": "credit",
@@ -199,6 +199,19 @@
       "amount": 560.0,
       "requested": 560.0,
       "reason": "max ratio 0.81 > 0.35 (joker=0.02  loto_649=0.01  loto_540=0.81)"
+    },
+    {
+      "kind": "debit",
+      "draw_date": "2026-08-17",
+      "amount": 420.0,
+      "requested": 420.0,
+      "reason": "max ratio 0.81 > 0.35 (joker=0.02  loto_649=0.01  loto_540=0.81)"
+    },
+    {
+      "kind": "credit",
+      "draw_date": "2026-08-17",
+      "amount": 17.5,
+      "reason": "unused boost (released 420.00, spent 472.50)"
     }
   ]
 }
