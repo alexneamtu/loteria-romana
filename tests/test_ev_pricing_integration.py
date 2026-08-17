@@ -63,9 +63,9 @@ class TestBreakevenSpreadsCostAcrossLines(unittest.TestCase):
         self.assertNotIn(3, by_matches)
 
     def test_loto_540_breakeven_is_far_above_routine_rollovers(self):
-        # With Category I correct the breakeven is ~3.36M, not ~548K. Routine
-        # 5/40 rollovers (400K-1M) are nowhere near it, so the EV gate must
-        # not treat them as close to breakeven.
+        # With Category I correct and tax applied the breakeven is ~5.6M, not
+        # ~548K. Routine 5/40 rollovers (400K-1M) are nowhere near it, so the
+        # EV gate must not treat them as close to breakeven.
         calc = EVCalculator()
         breakeven = calc._calculate_positive_ev_jackpot(calc.create_loto_540(), 1.0, None)  # noqa: SLF001
         self.assertGreater(breakeven, 3_000_000)
@@ -110,6 +110,40 @@ class TestTaxAndParimutuel(unittest.TestCase):
             per_line_return * game.lines_per_ticket - game.ticket_cost,
             delta=0.01,
         )
+
+
+class TestGateUsesDeclaredPrizesOnly(unittest.TestCase):
+    def test_breakeven_ignores_estimated_parimutuel_tiers(self):
+        # Estimated upside must not lower the bar for spending real money.
+        calc = EVCalculator()
+        game = calc.create_loto_649()
+        declared_only = calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
+        with_estimates = calc._gross_prize(  # noqa: SLF001
+            (
+                game.ticket_cost / game.lines_per_ticket
+                - sum(
+                    t.probability * calc._net_prize(  # noqa: SLF001
+                        t.fixed_prize
+                        if t.fixed_prize is not None
+                        else calc._parimutuel_prize(game, t),  # noqa: SLF001
+                        None,
+                    )
+                    for t in game.prize_tiers
+                    if t is not calc._jackpot_tier(game)  # noqa: SLF001
+                )
+            )
+            / calc._jackpot_tier(game).probability,  # noqa: SLF001
+            None,
+        )
+        self.assertGreater(declared_only, with_estimates)
+
+    def test_parimutuel_estimate_excludes_the_processing_fee(self):
+        # The 0.50 RON fee is charged once per ticket and funds no prize pool,
+        # so ticket_cost/lines (5.125 for 5/40) is not the eligible stake.
+        calc = EVCalculator()
+        game = calc.create_loto_540()
+        self.assertEqual(game.stake_per_line, 5.0)
+        self.assertLess(game.stake_per_line, game.ticket_cost / game.lines_per_ticket)
 
 
 if __name__ == "__main__":

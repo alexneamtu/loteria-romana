@@ -18,9 +18,15 @@ from typing import Optional
 
 from .tax import gross_for_net, net_of_tax
 
-# Share of stakes returned as prizes across all tiers. Romanian lotto base
-# funding is ~45%; used only to estimate non-jackpot pari-mutuel prizes.
-PARIMUTUEL_PAYOUT_FRACTION = 0.45
+# Share of eligible stakes assigned to the prize fund. The regulation sets a
+# 40% minimum, and published normal-draw accounts reconcile to exactly that:
+#   5/40  13.07.2025  142,610 / (71,305 x 5)                        = 0.400000
+#   6/49  13.07.2025  (14,683,210.96 - 12,613,972.56) / (646,637x8) = 0.400000
+#   joker 08.05.2025  (18,822,799.72 - 18,011,580.05 - 135,391.67)
+#                     / (281,595 x 6)                               = 0.400000
+# (report carry-ins subtracted; special draws can add money on top.)
+# Used for informational EV only — see _calculate_positive_ev_jackpot.
+PARIMUTUEL_PAYOUT_FRACTION = 0.40
 
 
 @dataclass
@@ -46,6 +52,9 @@ class LotteryGame:
     # cost but prize probabilities are per-line, so breakeven math must
     # spread the cost across the lines the ticket actually plays.
     lines_per_ticket: int = 1
+    # Stake per line that funds prizes. NOT ticket_cost/lines: the 0.50 RON
+    # processing fee is charged once per ticket and funds nothing.
+    stake_per_line: float = 0.0
     prize_tiers: list[PrizeTier] = field(default_factory=list)
     has_bonus: bool = False
     bonus_pool_size: int = 0
@@ -98,7 +107,7 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
-        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
+        from .pricing import PRICE_PER_VARIANT, VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
             ticket_cost = compute_ticket_cost("loto_649", include_side_game=False)
         game = LotteryGame(
@@ -108,6 +117,7 @@ class EVCalculator:
             numbers_picked=6,
             ticket_cost=ticket_cost,
             lines_per_ticket=VARIANTS_PER_TICKET["loto_649"],
+            stake_per_line=PRICE_PER_VARIANT["loto_649"],
             has_bonus=False,
             jackpot_seed=100_000,  # Minimum jackpot
             rollover_percentage=1.0  # Full rollover
@@ -153,7 +163,7 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
-        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
+        from .pricing import PRICE_PER_VARIANT, VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
             ticket_cost = compute_ticket_cost("loto_540", include_side_game=False)
         game = LotteryGame(
@@ -163,6 +173,7 @@ class EVCalculator:
             numbers_picked=5,  # Player picks 5
             ticket_cost=ticket_cost,
             lines_per_ticket=VARIANTS_PER_TICKET["loto_540"],
+            stake_per_line=PRICE_PER_VARIANT["loto_540"],
             has_bonus=False,
             jackpot_seed=50_000,
             rollover_percentage=1.0
@@ -202,7 +213,7 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
-        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
+        from .pricing import PRICE_PER_VARIANT, VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
             ticket_cost = compute_ticket_cost("joker", include_side_game=False)
         game = LotteryGame(
@@ -212,6 +223,7 @@ class EVCalculator:
             numbers_picked=5,
             ticket_cost=ticket_cost,
             lines_per_ticket=VARIANTS_PER_TICKET["joker"],
+            stake_per_line=PRICE_PER_VARIANT["joker"],
             has_bonus=True,
             bonus_pool_size=20,
             jackpot_seed=200_000,
@@ -462,8 +474,7 @@ class EVCalculator:
         if tier.probability <= 0:
             return 0.0
         pct = tier.prize_pool_percentage or 0.05
-        price_per_line = game.ticket_cost / game.lines_per_ticket
-        return pct * PARIMUTUEL_PAYOUT_FRACTION * price_per_line / tier.probability
+        return pct * PARIMUTUEL_PAYOUT_FRACTION * game.stake_per_line / tier.probability
 
     @staticmethod
     def _net_prize(prize: float, tax_rate: Optional[float]) -> float:
@@ -494,20 +505,22 @@ class EVCalculator:
         if jackpot_tier is None or jackpot_tier.probability == 0:
             return None
 
-        # Expected net return per line from every tier below the jackpot.
-        # Pari-mutuel tiers used to be dropped here (only `fixed_prize` ones
-        # counted), which pretended Category II pays nothing and pushed the
-        # breakeven jackpot up.
+        # Declared prize amounts only. `_parimutuel_prize` is a long-run
+        # approximation — it ignores tier carry-ins, replaces the winner count
+        # with its expectation, and rests on an assumed payout fraction. This
+        # number gates real spending, and crediting estimated upside here can
+        # only ever turn "block" into "spend". A false pass costs a ticket run;
+        # a false block costs nothing but the delay, so the bias goes that way.
+        #
+        # Residual: some `fixed_prize` values below are themselves unsourced
+        # (5/40 Category III and 6/49 Category III are pari-mutuel in the
+        # official reports, not fixed), which biases breakeven slightly *down*.
+        # Correcting the tier data is the next step, not counting estimates.
         fixed_ev = 0.0
         for tier in game.prize_tiers:
-            if tier is jackpot_tier:
+            if tier is jackpot_tier or tier.fixed_prize is None:
                 continue
-            prize = (
-                tier.fixed_prize
-                if tier.fixed_prize is not None
-                else self._parimutuel_prize(game, tier)
-            )
-            fixed_ev += tier.probability * self._net_prize(prize, tax_rate)
+            fixed_ev += tier.probability * self._net_prize(tier.fixed_prize, tax_rate)
 
         # A ticket buys `lines_per_ticket` independent lines, but the tier
         # probabilities and fixed_ev above are per line. Spread the whole-
