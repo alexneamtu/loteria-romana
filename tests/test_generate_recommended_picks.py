@@ -98,8 +98,42 @@ class TestApplyEVGateV2(unittest.TestCase):
             boost_ratio=self.BOOST_RATIO,
         )
         self.assertEqual(decision.action, "boost")
-        self.assertEqual(decision.extra_budget, 40.0)
+        # No bank yet, so nothing to release.
+        self.assertEqual(decision.extra_budget, 0.0)
         self.assertIn("loto_540=", decision.reason)
+
+    def test_boost_releases_a_share_of_the_bank_not_a_flat_budget(self):
+        # A flat one-budget release could never drain a bank fed by far
+        # more skips than boosts; it grew monotonically to 2240 RON.
+        decision = recommended_script.apply_ev_gate_v2(
+            budget=70.0,
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+            skip_ratio=self.SKIP_RATIO,
+            boost_ratio=self.BOOST_RATIO,
+            ledger_balance=2240.0,
+            boost_fraction=0.25,
+        )
+        self.assertEqual(decision.action, "boost")
+        self.assertEqual(decision.extra_budget, 560.0)
+
+    def test_boost_drains_geometrically_and_never_goes_negative(self):
+        balance = 2240.0
+        releases = []
+        for _ in range(6):
+            decision = recommended_script.apply_ev_gate_v2(
+                budget=70.0,
+                jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
+                skip_ratio=self.SKIP_RATIO,
+                boost_ratio=self.BOOST_RATIO,
+                ledger_balance=balance,
+                boost_fraction=0.25,
+            )
+            releases.append(decision.extra_budget)
+            balance -= decision.extra_budget
+
+        self.assertEqual(releases, sorted(releases, reverse=True))
+        self.assertLess(balance, 2240.0 * 0.2)
+        self.assertGreater(balance, 0.0)
 
     def test_joker_uses_main_ticket_cost_not_bundled(self):
         # Joker jackpot = 200M. With main-ticket-only breakeven (~346M),
@@ -215,6 +249,42 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                 "no game reached min ratio",
                 (out_dir / "skip_notice.txt").read_text(),
             )
+
+    def test_unspendable_boost_is_returned_to_the_ledger(self):
+        # The allocator caps tickets per game, so a release can exceed what
+        # is buyable. The surplus must go back to the bank, not vanish.
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "bank.json"
+            ledger_path.write_text(json.dumps({"balance": 20000.0, "entries": []}))
+            small = TicketAllocation(
+                tickets={"joker": 0, "loto_649": 0, "loto_540": 20},
+                total_cost=450.0,
+                p_any_win=0.01,
+            )
+            with mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+                mock.patch.object(recommended_script, "best_allocation", return_value=small), \
+                mock.patch.object(recommended_script, "apply_ev_gate", return_value=(small, {})), \
+                mock.patch.object(recommended_script, "_build_tickets_for_allocation", return_value=[]), \
+                mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+                mock.patch("builtins.print"), \
+                mock.patch("sys.argv", [
+                    "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
+                    "--ev-min-ratio", "0.10", "--ev-boost-fraction", "0.25",
+                    "--joker-jackpot", "1", "--loto649-jackpot", "1",
+                    "--loto540-jackpot", "1000000",
+                    "--ledger-path", str(ledger_path),
+                ]):
+                recommended_script.main()
+
+            data = json.loads(ledger_path.read_text())
+            kinds = [e["kind"] for e in data["entries"]]
+            self.assertEqual(kinds, ["debit", "credit"])
+            # Released 5000, spent 450 of the 5070 effective budget. The
+            # first 70 comes from the base budget, so only 380 of the boost
+            # was consumed and the rest goes back.
+            self.assertEqual(data["entries"][0]["amount"], 5000.0)
+            self.assertEqual(data["entries"][1]["amount"], 5070.0 - 450.0)
+            self.assertEqual(data["balance"], 20000.0 - 380.0)
 
     def test_no_double_credit_when_global_gate_skips(self):
         with tempfile.TemporaryDirectory() as tmp:

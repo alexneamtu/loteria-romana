@@ -126,6 +126,13 @@ def build_parser():
         help="Boost budget from ledger if any game's ratio > this",
     )
     parser.add_argument(
+        "--ev-boost-fraction", type=float, default=0.25,
+        help=(
+            "Share of the ledger balance released on a boost (default 0.25). "
+            "Must be > 0, else the bank can never drain"
+        ),
+    )
+    parser.add_argument(
         "--ledger-path", type=str, default="data/budget_bank.json",
         help="Path to budget ledger JSON file",
     )
@@ -339,7 +346,11 @@ def apply_ev_gate(
     budget_cap = allocation.total_cost or sum(
         compute_ticket_cost(g) * c for g, c in allocation.tickets.items() if c > 0
     )
-    filtered = best_allocation(budget_ron=budget_cap, allowed_games=allowed_games)
+    filtered = best_allocation(
+        budget_ron=budget_cap,
+        allowed_games=allowed_games,
+        max_per_game=_tickets_needed(budget_cap),
+    )
     return filtered, details
 
 
@@ -364,12 +375,21 @@ def apply_ev_gate_v2(
     jackpots: dict[str, float | None],
     skip_ratio: float,
     boost_ratio: float,
+    ledger_balance: float = 0.0,
+    boost_fraction: float = 0.25,
 ) -> EVDecision:
     """Compute per-game jackpot/breakeven ratios and decide skip/boost/play.
 
     Uses each game's EV-tier ticket cost (main ticket only — side games
     have separate prize ladders not modeled by EVCalculator) so the
     breakeven reflects the prize tiers we actually score against.
+
+    A boost releases `boost_fraction` of the accumulated ledger, not one
+    flat budget unit. Skips credit one budget unit each and outnumber
+    boosts several to one, so a flat release could never drain the bank —
+    it grew monotonically to 2240 RON. Releasing a share of the balance
+    self-corrects: the bigger the bank, the bigger the boost, and each
+    boost leaves a smaller bank behind.
     """
     calc = EVCalculator()
     games = {
@@ -402,7 +422,7 @@ def apply_ev_gate_v2(
         return EVDecision(
             action="boost",
             reason=f"max ratio {max_ratio:.2f} > {boost_ratio} ({ratio_summary})",
-            extra_budget=budget,
+            extra_budget=max(ledger_balance * boost_fraction, 0.0),
         )
     return EVDecision(
         action="play",
@@ -410,9 +430,22 @@ def apply_ev_gate_v2(
     )
 
 
+def _tickets_needed(budget_ron: float) -> int:
+    """Per-game ticket cap large enough to spend `budget_ron`, bounded.
+
+    The allocator's default cap of 8 tops out at 180 RON on 5/40 alone, so
+    a boosted budget could not be deployed and the surplus was refunded
+    rather than played. Enumeration is O(cap^3), hence the ceiling of 40.
+    """
+    cheapest = min(compute_ticket_cost(g) for g in ("joker", "loto_649", "loto_540"))
+    return max(8, min(int(budget_ron // cheapest) + 1, 40))
+
+
 def _top_n_diverse_allocations(budget_ron: float, n: int) -> list[TicketAllocation]:
     """Top N allocations with diverse active-game mixes, ranked by p_any_win."""
-    all_allocs = enumerate_allocations(budget_ron=budget_ron)
+    all_allocs = enumerate_allocations(
+        budget_ron=budget_ron, max_per_game=_tickets_needed(budget_ron),
+    )
     by_mix: dict[frozenset[str], TicketAllocation] = {}
     for alloc in all_allocs:
         active = frozenset(g for g, c in alloc.tickets.items() if c > 0)
@@ -435,6 +468,11 @@ def main():
     # no tickets, no ledger credit, budget silently lost.
     if args.ev_skip_ratio is None:
         args.ev_skip_ratio = args.ev_min_ratio
+
+    if not 0.0 < args.ev_boost_fraction <= 1.0:
+        raise SystemExit(
+            f"--ev-boost-fraction must be in (0, 1], got {args.ev_boost_fraction}"
+        )
 
     try:
         half_life, half_life_mode = resolve_recency_settings(
@@ -493,12 +531,35 @@ def main():
                 encoding="utf-8",
             )
 
+    boosted_amount = 0.0
+
+    def refund_unused_boost(spent: float) -> None:
+        """Return the slice of a boost the allocator could not deploy.
+
+        The allocator caps tickets per game, so a large release can exceed
+        what is actually buyable. Without this the surplus left the ledger
+        and bought nothing — money lost rather than banked.
+        """
+        if ledger is None or boosted_amount <= 0:
+            return
+        unused = min(effective_budget - spent, boosted_amount)
+        if unused <= 0:
+            return
+        ledger.credit_skip(
+            draw_date=draw_date,
+            amount=unused,
+            reason=f"unused boost (released {boosted_amount:.2f}, spent {spent:.2f})",
+        )
+        print(f"Returned {unused:.2f} RON of unused boost. Ledger: {ledger.balance():.2f} RON")
+
     if args.ev_gate:
         decision = apply_ev_gate_v2(
             budget=args.budget,
             jackpots=jackpots,
             skip_ratio=args.ev_skip_ratio,
             boost_ratio=args.ev_boost_ratio,
+            ledger_balance=ledger.balance(),
+            boost_fraction=args.ev_boost_fraction,
         )
         if decision.action == "skip":
             record_skip(decision.reason)
@@ -515,6 +576,7 @@ def main():
             return
         if decision.action == "boost":
             actual = ledger.debit_boost(draw_date=draw_date, amount=decision.extra_budget, reason=decision.reason)
+            boosted_amount = actual
             effective_budget = args.budget + actual
             print(f"EV gate: BOOST +{actual:.2f} → effective {effective_budget:.2f} RON")
 
@@ -578,6 +640,7 @@ def main():
             all_db_rows.extend(_tickets_to_db_rows(tickets, suffix=suffix))
 
 
+        refund_unused_boost(sum(a.total_cost for a in allocations))
         best_alloc = allocations[0] if allocations else TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
             total_cost=0.0,
@@ -604,7 +667,10 @@ def main():
         if buckets is not None:
             allocation = best_per_game_allocation(buckets)
         else:
-            allocation = best_allocation(budget_ron=effective_budget)
+            allocation = best_allocation(
+                budget_ron=effective_budget,
+                max_per_game=_tickets_needed(effective_budget),
+            )
         allocation, gate_details = apply_ev_gate(
             allocation=allocation,
             enabled=args.ev_gate,
@@ -655,6 +721,7 @@ def main():
         if output_dir:
             _write_outputs(output_dir, tickets, allocation, effective_budget)
 
+        refund_unused_boost(allocation.total_cost)
         db_rows = _tickets_to_db_rows(tickets)
         persist_generation_run(
             budget=effective_budget,

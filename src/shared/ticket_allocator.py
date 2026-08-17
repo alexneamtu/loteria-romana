@@ -109,8 +109,11 @@ def enumerate_allocations(
 def best_allocation(
     budget_ron: float,
     allowed_games: set[str] | None = None,
+    max_per_game: int = 8,
 ) -> TicketAllocation:
-    allocs = enumerate_allocations(budget_ron=budget_ron, allowed_games=allowed_games)
+    allocs = enumerate_allocations(
+        budget_ron=budget_ron, allowed_games=allowed_games, max_per_game=max_per_game,
+    )
     if not allocs:
         return TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 0},

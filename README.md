@@ -40,6 +40,15 @@ Every scheduled run scrapes the current jackpots from the loto.ro homepage and c
 - `0.10 ≤ ratio ≤ 0.35` → play normally at the scheduled budget, using only the games that clear 0.10.
 - `ratio > 0.35` (boost threshold) → debit the ledger to increase the effective budget on high rollovers.
 
+A boost releases **25% of the ledger balance** (`--ev-boost-fraction`), not one flat budget unit. Skips outnumber boosts several to one, so a flat release can never drain the bank — it grew monotonically to 2240 RON before this was fixed. Releasing a share self-corrects: a larger bank means a larger boost, and each boost leaves less behind.
+
+Two constraints keep that honest:
+
+- The allocator's per-game ticket cap scales with the budget (bounded at 40 per game, since enumeration is `O(cap³)`). At the old fixed cap of 8, a boosted budget could not be deployed at all — 5/40 alone topped out at 180 RON.
+- Whatever the allocator still cannot spend is **credited back** to the ledger as an `unused boost` entry. Money never leaves the bank without buying a ticket.
+
+Simulated against the last nine runs' observed ratios and the real allocator, the balance settles near 800 RON instead of passing 4000.
+
 **These thresholds are relative, not break-even.** A ratio of 1.0 means the jackpot has reached the point where a ticket's EV crosses zero — for Joker that is ~346M RON and for 6/49 ~337M RON, roughly 5× the largest jackpots those games have ever paid. Gating at `ratio ≥ 1.0` therefore means never playing, which is the mathematically correct answer and also a pipeline that produces nothing. The thresholds above instead ask "is this jackpot high relative to its own range?" and accept a negative EV. Only Loto 5/40 (breakeven ~2.23M RON) can realistically approach 1.0.
 
 `--ev-skip-ratio` defaults to `--ev-min-ratio` so the global skip gate and the per-game filter cannot disagree. Setting skip lower than min only widens the band where a draw is nominally played but every game is filtered out; that case now credits the ledger and posts a reason rather than silently dropping the budget.
