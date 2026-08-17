@@ -19,13 +19,15 @@ from typing import Optional
 from .tax import gross_for_net, net_of_tax
 
 # Share of eligible stakes assigned to the prize fund. The regulation sets a
-# 40% minimum, and published normal-draw accounts reconcile to exactly that:
-#   5/40  13.07.2025  142,610 / (71,305 x 5)                        = 0.400000
-#   6/49  13.07.2025  (14,683,210.96 - 12,613,972.56) / (646,637x8) = 0.400000
-#   joker 08.05.2025  (18,822,799.72 - 18,011,580.05 - 135,391.67)
-#                     / (281,595 x 6)                               = 0.400000
-# (report carry-ins subtracted; special draws can add money on top.)
-# Used for informational EV only — see _calculate_positive_ev_jackpot.
+# 40% minimum, and three Loto Prono bulletins (5/40 and 6/49 13.07.2025, Joker
+# 08.05.2025) reconcile to exactly 0.400000 once report carry-ins are removed.
+# Those bulletins were not retrieved first-hand, and back-solving the fraction
+# from individual draw reports scatters it across roughly 0.27-0.64 — the
+# per-draw sales reconstruction is too loose to pin it down.
+#
+# So: unverified but reasonable, and deliberately walled off from the spend
+# decision. Only _parimutuel_prize uses it, and the breakeven that gates
+# spending counts declared prizes only.
 PARIMUTUEL_PAYOUT_FRACTION = 0.40
 
 
@@ -549,9 +551,12 @@ class EVCalculator:
         if jackpot_tier.probability <= 0:
             return None
 
-        # Net jackpot share that closes the gap, then gross it back up. The
-        # tax is progressive, so this cannot be a `/(1 - rate)` division.
-        needed_net_share = (needed_ev * expected_winners) / jackpot_tier.probability
+        # Net *share* that closes the gap, grossed back up, then multiplied by
+        # the number of winners the jackpot is split between. Tax is
+        # progressive, so this cannot be a `/(1 - rate)` division — and the
+        # split applies once, to the gross total, not also to the per-winner
+        # share (that doubled breakeven at expected_winners=2).
+        needed_net_share = needed_ev / jackpot_tier.probability
         gross_share = self._gross_prize(needed_net_share, tax_rate)
         return max(0.0, gross_share * expected_winners)
 

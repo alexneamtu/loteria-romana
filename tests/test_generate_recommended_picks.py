@@ -14,14 +14,15 @@ from shared.ev_calculator import EVCalculator
 from shared.ticket_allocator import TicketAllocation
 
 
-def _breakeven(factory) -> float:
+def _breakeven(game_key: str) -> float:
     calc = EVCalculator()
-    return calc._calculate_positive_ev_jackpot(factory(), 1.0, None)  # noqa: SLF001
+    game = recommended_script._gate_games(calc)[game_key]  # noqa: SLF001
+    return calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
 
 
 def joker_jackpot_at(ratio: float) -> float:
     """Joker jackpot giving this jackpot/breakeven ratio."""
-    return round(ratio * _breakeven(EVCalculator.create_joker), 2)
+    return round(ratio * _breakeven("joker"), 2)
 
 
 def loto540_jackpot_at(ratio: float) -> float:
@@ -31,7 +32,7 @@ def loto540_jackpot_at(ratio: float) -> float:
     bands, and a frozen jackpot silently changes band whenever the breakeven
     is corrected (as it was when Category I dropped from 6/C(40,5) to 1).
     """
-    return round(ratio * _breakeven(EVCalculator.create_loto_540), 2)
+    return round(ratio * _breakeven("loto_540"), 2)
 
 
 # Subprocess-based tests spawn the real orchestrator end-to-end (loading
@@ -156,17 +157,25 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertLess(balance, 2240.0 * 0.2)
         self.assertGreater(balance, 0.0)
 
-    def test_joker_uses_main_ticket_cost_not_bundled(self):
-        # Ratio 0.56 on main-ticket-only cost (14.5) -> play. Had the gate
-        # used the bundled cost (17.5 incl. Noroc Plus), breakeven would be
-        # ~21% higher and the same jackpot would read 0.46 -> skip.
+    def test_gate_prices_the_bundle_the_allocator_actually_buys(self):
+        # The side game is bought unconditionally and its prizes are not
+        # modelled. Pricing the gate on the main game alone (14.5 of 17.5)
+        # credited zero benefit against a partial cost, so a jackpot just
+        # under the bar read as over it.
+        calc = EVCalculator()
+        for key, cost in (("joker", 17.5), ("loto_649", 28.5), ("loto_540", 22.5)):
+            self.assertEqual(recommended_script._gate_games(calc)[key].ticket_cost, cost)  # noqa: SLF001
+
+    def test_jackpot_just_under_the_bar_on_bundled_cost_skips(self):
+        # 580,000 on 5/40: 0.104 against the 20.50 main-only basis (play),
+        # 0.094 against the 22.50 actually spent (skip).
         decision = recommended_script.apply_ev_gate_v2(
-            budget=40.0,
-            jackpots={"joker": joker_jackpot_at(0.56), "loto_649": 1.0, "loto_540": 1.0},
-            skip_ratio=self.SKIP_RATIO,
-            boost_ratio=self.BOOST_RATIO,
+            budget=400.0,
+            jackpots={"joker": 0.0, "loto_649": 0.0, "loto_540": 580_000.0},
+            skip_ratio=0.10,
+            boost_ratio=0.35,
         )
-        self.assertEqual(decision.action, "play")
+        self.assertEqual(decision.action, "skip")
 
     def test_missing_jackpot_treated_as_zero_ratio(self):
         decision = recommended_script.apply_ev_gate_v2(
@@ -235,7 +244,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
             self.assertEqual(json.loads(ledger_path.read_text())["balance"], 70.0)
             notice = (out_dir / "skip_notice.txt").read_text()
             self.assertIn("no game reached min ratio", notice)
-            self.assertIn("loto_540=0.22", notice)
+            self.assertIn("loto_540=0.22", notice)  # derived fixture, see loto540_jackpot_at
 
     def test_dead_band_credits_ledger_in_multi_mix_path_too(self):
         # --mixes > 1 filters allocations in its own loop; an empty result
@@ -544,7 +553,10 @@ class TestBudgetIsNotMultiplied(unittest.TestCase):
         )
         self.assertEqual(sum(buckets.values()), 400.0)
 
-    def test_mixes_share_the_budget_instead_of_each_taking_it(self):
+    def test_each_mix_is_a_complete_alternative_basket(self):
+        # README: --mixes emits N diverse allocations as tickets_mix{i}.json,
+        # i.e. options to pick from. Each must be a full-budget basket; only
+        # one is bought, so the ledger banks against one, not their sum.
         seen = []
         with mock.patch.object(
             recommended_script, "_top_n_diverse_allocations",
@@ -556,4 +568,12 @@ class TestBudgetIsNotMultiplied(unittest.TestCase):
                 "generate_recommended_picks.py", "--budget", "400", "--mixes", "4",
             ]):
             recommended_script.main()
-        self.assertEqual(seen, [100.0])  # 400 / 4, not 400 four times
+        self.assertEqual(seen, [400.0])
+
+    def test_bucket_budget_rejects_nan_and_negative_amounts(self):
+        # `nan > budget` is False and so is the allocator's `cost > nan`, so a
+        # NaN bucket bought 8 tickets of every game under a 400 RON cap.
+        for spec in ("joker=nan,loto_649=nan,loto_540=nan",
+                     "joker=200,loto_649=200,loto_540=-300"):
+            with self.assertRaises(SystemExit, msg=spec):
+                recommended_script._parse_bucket_budget(spec, 400.0)  # noqa: SLF001

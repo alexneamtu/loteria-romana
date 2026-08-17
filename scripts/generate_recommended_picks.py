@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 import random
+from math import isfinite
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -150,6 +151,23 @@ def load_joker_draws():
     return load_draws(csv_path)
 
 
+def _gate_games(calc: EVCalculator) -> dict[str, object]:
+    """Games priced as the allocator actually buys them.
+
+    The side game is bought unconditionally (compute_ticket_cost defaults to
+    include_side_game=True) but its prize ladder is not modelled, so the gate
+    credits it nothing. Charging its cost anyway keeps the comparison honest:
+    counting zero benefit against a partial cost is what let a 580,000 RON
+    5/40 rollover read 0.104 (play) on a 20.50 basis and 0.094 (skip) on the
+    22.50 actually spent.
+    """
+    return {
+        "joker": calc.create_joker(ticket_cost=compute_ticket_cost("joker")),
+        "loto_649": calc.create_loto_649(ticket_cost=compute_ticket_cost("loto_649")),
+        "loto_540": calc.create_loto_540(ticket_cost=compute_ticket_cost("loto_540")),
+    }
+
+
 def _parse_bucket_budget(
     raw: str | None, budget: float | None = None
 ) -> dict[str, float] | None:
@@ -175,9 +193,17 @@ def _parse_bucket_budget(
         if game not in known:
             raise SystemExit(f"--bucket-budget unknown game {game!r}; known: {sorted(known)}")
         try:
-            out[game] = float(amount)
+            value = float(amount)
         except ValueError as exc:
             raise SystemExit(f"--bucket-budget amount {amount!r} is not numeric") from exc
+        # NaN defeats every comparison it touches: `nan > budget` is False and
+        # so is the allocator's `cost > nan`, so a NaN bucket bought 8 tickets
+        # of every game. Negatives let one bucket mask another's overspend.
+        if not isfinite(value) or value < 0:
+            raise SystemExit(
+                f"--bucket-budget amount {amount!r} must be finite and non-negative"
+            )
+        out[game] = value
     total = sum(out.values())
     if budget is not None and total > budget:
         raise SystemExit(
@@ -329,11 +355,7 @@ def apply_ev_gate(
         return allocation, {}
 
     calc = EVCalculator()
-    games = {
-        "joker": calc.create_joker(),
-        "loto_649": calc.create_loto_649(),
-        "loto_540": calc.create_loto_540(),
-    }
+    games = _gate_games(calc)
 
     details: dict[str, dict[str, float | bool]] = {}
     allowed_games: set[str] = set()
@@ -412,11 +434,7 @@ def apply_ev_gate_v2(
     boost leaves a smaller bank behind.
     """
     calc = EVCalculator()
-    games = {
-        "joker": calc.create_joker(),
-        "loto_649": calc.create_loto_649(),
-        "loto_540": calc.create_loto_540(),
-    }
+    games = _gate_games(calc)
     ratios: dict[str, float] = {}
     breakevens: dict[str, float] = {}
     for game_name, game in games.items():
@@ -607,12 +625,7 @@ def main():
             print(f"EV gate: BOOST +{actual:.2f} → effective {effective_budget:.2f} RON")
 
     if args.mixes > 1:
-        # Every mix is bought, so they share the budget. Sizing each one to
-        # the full budget spent `mixes x budget` in real tickets — --mixes 3
-        # on 400 RON emitted 1,171 RON of tickets.
-        allocations = _top_n_diverse_allocations(
-            effective_budget / args.mixes, args.mixes
-        )
+        allocations = _top_n_diverse_allocations(effective_budget, args.mixes)
         if args.ev_gate:
             filtered = []
             mix_details: dict = {}
@@ -671,7 +684,10 @@ def main():
             all_db_rows.extend(_tickets_to_db_rows(tickets, suffix=suffix))
 
 
-        refund_unused_boost(sum(a.total_cost for a in allocations))
+        # Mixes are alternatives — one basket gets bought, not all of them.
+        # Summing their costs told the ledger `mixes x budget` was spent and
+        # refunded nothing, so bank against the one that would be chosen.
+        refund_unused_boost(allocations[0].total_cost if allocations else 0.0)
         best_alloc = allocations[0] if allocations else TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 0},
             total_cost=0.0,

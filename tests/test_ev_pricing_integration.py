@@ -2,6 +2,7 @@ import math
 import unittest
 
 from shared.ev_calculator import EVCalculator
+from shared.tax import gross_for_net
 
 
 class TestEVCalculatorUsesSharedPricing(unittest.TestCase):
@@ -187,6 +188,34 @@ class TestTierDataMatchesPublishedReports(unittest.TestCase):
         game = calc.create_loto_649()
         fund = 0.40 * game.stake_per_line
         self.assertLess(calc._distributable_per_line(game), fund)  # noqa: SLF001
+
+
+class TestBreakevenAnchoredToFirstPrinciples(unittest.TestCase):
+    """The gate fixtures derive their jackpots from this function, so nothing
+    else pins the composed result. Anchor it independently: 5/40 has no
+    declared prize below the jackpot, so breakeven is the gross jackpot whose
+    after-tax value equals cost-per-line x C(40,5)."""
+
+    def test_loto_540_breakeven_from_first_principles(self):
+        calc = EVCalculator()
+        game = calc.create_loto_540()
+        expected = gross_for_net(
+            (game.ticket_cost / game.lines_per_ticket) * math.comb(40, 5)
+        )
+        self.assertAlmostEqual(
+            calc._calculate_positive_ev_jackpot(game, 1.0, None),  # noqa: SLF001
+            expected,
+            delta=1.0,
+        )
+
+    def test_expected_winners_scales_breakeven_linearly(self):
+        # The split applies once, to the gross total. Applying it to the
+        # per-winner share as well doubled breakeven at two winners.
+        calc = EVCalculator()
+        game = calc.create_loto_540()
+        one = calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
+        two = calc._calculate_positive_ev_jackpot(game, 2.0, None)  # noqa: SLF001
+        self.assertAlmostEqual(two, one * 2, delta=1.0)
 
 
 if __name__ == "__main__":
