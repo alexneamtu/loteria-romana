@@ -15,8 +15,8 @@ Two GitHub Actions workflows run the whole pipeline:
 
 | Workflow | Schedule | Purpose |
 |---|---|---|
-| `generate-picks.yml` | Sun + Thu at 10:00 UTC | Scrape current jackpots, run EV gate, generate ticket(s), post to Telegram |
-| `check-results.yml` | Mon + Fri at 09:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
+| `generate-picks.yml` | Sun + Thu at 06:00 UTC | Scrape current jackpots, run EV gate, generate ticket(s), post to Telegram |
+| `check-results.yml` | Mon + Fri at 06:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
 
 Both commit their artifacts back to `main` so historical state survives across runs.
 
@@ -36,17 +36,30 @@ The orchestrator emits one `picks/tickets.json` per run with the allocation, var
 
 Every scheduled run scrapes the current jackpots from the loto.ro homepage and computes `ratio = jackpot / breakeven` per game, where **breakeven** is the jackpot amount at which a ticket's expected value crosses zero.
 
-- `ratio < 0.5` (skip threshold) → no tickets, credit the day's budget to the ledger.
-- `0.5 ≤ ratio ≤ 1.2` → play normally at the scheduled budget.
-- `ratio > 1.2` (boost threshold) → debit the ledger to increase the effective budget on high-EV rollovers.
+- `ratio < 0.10` (skip threshold) → no tickets, credit the day's budget to the ledger.
+- `0.10 ≤ ratio ≤ 0.35` → play normally at the scheduled budget, using only the games that clear 0.10.
+- `ratio > 0.35` (boost threshold) → debit the ledger to increase the effective budget on high rollovers.
 
-Breakeven is computed from the **main-ticket cost only** (variants + processing fee) — side-game stakes have separate prize ladders not scored by the EV model. Each skip/play/boost decision includes the per-game ratios in its reason (e.g. `all ratios < 0.5 (joker=0.19  loto_649=0.05  loto_540=0.28)`), so the Telegram notice explains *why* the gate fired. The ledger persists at `data/budget_bank.json` and is committed on every run.
+A boost releases **25% of the ledger balance** (`--ev-boost-fraction`), not one flat budget unit. Skips outnumber boosts several to one, so a flat release can never drain the bank — it grew monotonically to 2240 RON before this was fixed. Releasing a share self-corrects: a larger bank means a larger boost, and each boost leaves less behind.
+
+Two constraints keep that honest:
+
+- The allocator's per-game ticket cap scales with the budget (bounded at 40 per game, since enumeration is `O(cap³)`). At the old fixed cap of 8, a boosted budget could not be deployed at all — 5/40 alone topped out at 180 RON.
+- Whatever the allocator still cannot spend is **credited back** to the ledger as an `unused boost` entry. Money never leaves the bank without buying a ticket.
+
+Simulated against the last nine runs' observed ratios and the real allocator, the balance settles near 800 RON instead of passing 4000.
+
+**These thresholds are relative, not break-even.** A ratio of 1.0 means the jackpot has reached the point where a ticket's EV crosses zero — for Joker that is ~169M RON and for 6/49 ~108M RON, still well above the largest jackpots those games have ever paid. Gating Joker/6/49 at `ratio ≥ 1.0` therefore means practically never playing them, which is the mathematically correct answer and also a pipeline that produces nothing. The thresholds above instead ask "is this jackpot high relative to its own range?" and accept a negative EV. Loto 5/40 is the exception: its breakeven (~548K RON) sits inside the 400K–1M band real rollovers reach, so 5/40 genuinely clears 1.0 on routine rollovers and the gate boosts it.
+
+`--ev-skip-ratio` defaults to `--ev-min-ratio` so the global skip gate and the per-game filter cannot disagree. Setting skip lower than min only widens the band where a draw is nominally played but every game is filtered out; that case now credits the ledger and posts a reason rather than silently dropping the budget.
+
+Breakeven is computed from the **main-ticket cost only** (variants + processing fee) — side-game stakes have separate prize ladders not scored by the EV model — and that cost is **spread across the variant lines** the ticket plays, since each line is an independent jackpot chance (a full ticket buys 2/3/4 lines for Joker/6·49/5·40). Each skip/play/boost decision includes the per-game ratios in its reason (e.g. `all ratios < 0.5 (joker=0.19  loto_649=0.05  loto_540=0.28)`), so the Telegram notice explains *why* the gate fired. The ledger persists at `data/budget_bank.json` and is committed on every run.
 
 ## Strategies
 
 Ticket builders (in `src/shared/ticket_builders.py`):
 
-- **IndependentBuilder** (default) — each variant is an independent blended-picks draw. Status-quo baseline.
+- **IndependentBuilder** (default) — each variant is an independent blended-picks draw. Over-generates candidates, then keeps the most mutually-disjoint subset of the least-crowded lines: crowd-avoidance lifts `E[payout | win]` while disjoint variants lift `P(>=1 prize)` toward its union-bound ceiling (anti-crowding on by default; pass `anti_crowding=False` to disable).
 - **CoreShareBuilder** — all variants in a ticket share a high-signal "core" of K numbers; remaining slots rotate through a petal pool. Concentrates variance into the jackpot tail.
 - **WheelBuilder** — abbreviated covering wheel over a pool of K numbers. Guarantees N-match coverage if enough pool numbers are drawn.
 
@@ -101,11 +114,11 @@ EV of a ticket turns positive when the jackpot clears the per-game breakeven:
 
 | Game | Approx breakeven | Typical real jackpot |
 |---|---|---|
-| Joker | ~346M RON | 20–80M RON |
-| Loto 6/49 | ~337M RON | 10–30M RON |
-| Loto 5/40 | ~2.2M RON | 400K–1M RON |
+| Joker | ~169M RON | 20–80M RON |
+| Loto 6/49 | ~108M RON | 10–30M RON |
+| Loto 5/40 | ~548K RON | 400K–1M RON |
 
-Under normal conditions all three games sit well below breakeven, and the EV gate will skip most scheduled runs. A skip is the mathematically correct decision — it preserves budget for the rare rollover that actually clears the threshold.
+Joker and 6/49 sit well below breakeven under any realistic jackpot, so the EV gate skips them on most scheduled runs. Loto 5/40's breakeven (~548K) falls inside the range real rollovers reach, so the gate plays — and on high rollovers boosts — 5/40 while skipping the other two. A skip is the mathematically correct decision — it preserves budget for the rare rollover that actually clears the threshold.
 
 ## CLI
 
@@ -238,5 +251,5 @@ data/
 - Lottery outcomes are random; no model improves win probability.
 - The backtest signal on current history (1000–1200 draws per game) is **not statistically significant**. CoreShare and Wheel show directional jackpot-tilt vs Independent but sample size is too small for conclusive claims.
 - At the default 70 RON budget the allocator picks all-Joker (it dominates `P(any win) / RON` by 3–50×). Use `--bucket-budget joker=X,loto_649=Y,loto_540=Z` to force coverage of non-dominant games.
-- Anti-crowding (playing unpopular numbers to split the jackpot less when winning) is available as an opt-in flag on `CoreShareBuilder(anti_crowding=True)` — off by default to keep backtest-validated behavior.
+- Anti-crowding (playing unpopular numbers to split the jackpot less when winning) is **on by default** in `IndependentBuilder` (the scheduled production builder) and available as an opt-in flag on `CoreShareBuilder(anti_crowding=True)`. It only lifts `E[payout | pari-mutuel win]`; it has no effect on win probability or fixed-prize tiers.
 - Treat any spending as entertainment, not investment. Under normal jackpot conditions the EV gate will skip most scheduled runs — that is the mathematically correct behavior.

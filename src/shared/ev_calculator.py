@@ -36,6 +36,10 @@ class LotteryGame:
     numbers_drawn: int  # Numbers drawn (e.g., 6)
     numbers_picked: int  # Numbers player picks (usually same as drawn)
     ticket_cost: float
+    # Lines (variants) a full ticket buys. ticket_cost is the whole-ticket
+    # cost but prize probabilities are per-line, so breakeven math must
+    # spread the cost across the lines the ticket actually plays.
+    lines_per_ticket: int = 1
     prize_tiers: list[PrizeTier] = field(default_factory=list)
     has_bonus: bool = False
     bonus_pool_size: int = 0
@@ -88,8 +92,8 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
+        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
-            from .pricing import compute_ticket_cost
             ticket_cost = compute_ticket_cost("loto_649", include_side_game=False)
         game = LotteryGame(
             name="Loto 6/49",
@@ -97,6 +101,7 @@ class EVCalculator:
             numbers_drawn=6,
             numbers_picked=6,
             ticket_cost=ticket_cost,
+            lines_per_ticket=VARIANTS_PER_TICKET["loto_649"],
             has_bonus=False,
             jackpot_seed=100_000,  # Minimum jackpot
             rollover_percentage=1.0  # Full rollover
@@ -142,8 +147,8 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
+        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
-            from .pricing import compute_ticket_cost
             ticket_cost = compute_ticket_cost("loto_540", include_side_game=False)
         game = LotteryGame(
             name="Loto 5/40",
@@ -151,6 +156,7 @@ class EVCalculator:
             numbers_drawn=6,  # 6 are drawn
             numbers_picked=5,  # Player picks 5
             ticket_cost=ticket_cost,
+            lines_per_ticket=VARIANTS_PER_TICKET["loto_540"],
             has_bonus=False,
             jackpot_seed=50_000,
             rollover_percentage=1.0
@@ -194,8 +200,8 @@ class EVCalculator:
         tiers model main-game prizes only; side games have separate
         prize ladders and are not in scope here.
         """
+        from .pricing import VARIANTS_PER_TICKET, compute_ticket_cost
         if ticket_cost is None:
-            from .pricing import compute_ticket_cost
             ticket_cost = compute_ticket_cost("joker", include_side_game=False)
         game = LotteryGame(
             name="Joker",
@@ -203,6 +209,7 @@ class EVCalculator:
             numbers_drawn=5,
             numbers_picked=5,
             ticket_cost=ticket_cost,
+            lines_per_ticket=VARIANTS_PER_TICKET["joker"],
             has_bonus=True,
             bonus_pool_size=20,
             jackpot_seed=200_000,
@@ -436,9 +443,16 @@ class EVCalculator:
             if tier is not jackpot_tier and tier.fixed_prize is not None:
                 fixed_ev += tier.probability * tier.fixed_prize * (1 - tax_rate)
 
-        # EV = fixed_ev + P(jackpot) * jackpot / winners - cost > 0
-        # jackpot > (cost - fixed_ev) * winners / (P(jackpot) * (1-tax))
-        needed_ev = game.ticket_cost - fixed_ev
+        # A ticket buys `lines_per_ticket` independent lines, but the tier
+        # probabilities and fixed_ev above are per line. Spread the whole-
+        # ticket cost across those lines so cost and odds are both per line
+        # (equivalently: charge the full cost against lines*P). Charging the
+        # full multi-variant cost against a single line's P overstated
+        # breakeven by roughly the variant count.
+        # EV/line = fixed_ev + P(jackpot) * jackpot / winners - cost/lines > 0
+        # jackpot > (cost/lines - fixed_ev) * winners / (P(jackpot) * (1-tax))
+        cost_per_line = game.ticket_cost / game.lines_per_ticket
+        needed_ev = cost_per_line - fixed_ev
         denominator = jackpot_tier.probability * (1 - tax_rate)
 
         if denominator > 0:

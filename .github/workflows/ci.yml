@@ -29,4 +29,10 @@ jobs:
       - name: Run tests
         # -n auto spreads tests across all available CPU cores (4 on
         # ubuntu-latest runners).
+        #
+        # SLOW_TESTS stays off here on purpose. Those tests subprocess the
+        # real orchestrator, train sklearn strategies and scrape live
+        # jackpots from loto.ro — enabling them took this job from ~5min to
+        # >20min and puts a third-party site on the PR critical path. The
+        # EV-gate logic is covered by fast mocked tests instead.
         run: PYTHONPATH=src python -m pytest tests/ -v -n auto --dist=loadfile

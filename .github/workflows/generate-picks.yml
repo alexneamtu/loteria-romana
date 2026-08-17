@@ -19,7 +19,7 @@ on:
       ev_min_ratio:
         description: 'Minimum jackpot/breakeven ratio when EV gate is enabled'
         required: false
-        default: '0.80'
+        default: '0.10'
         type: string
       joker_jackpot:
         description: 'Current Joker jackpot (RON)'
@@ -94,7 +94,7 @@ jobs:
           fi
           ev_min_ratio="${{ github.event.inputs.ev_min_ratio }}"
           if [ -z "$ev_min_ratio" ]; then
-            ev_min_ratio="0.80"
+            ev_min_ratio="0.10"
           fi
           joker_jackpot="${{ github.event.inputs.joker_jackpot }}"
           loto649_jackpot="${{ github.event.inputs.loto649_jackpot }}"

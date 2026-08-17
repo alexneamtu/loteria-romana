@@ -56,9 +56,13 @@ jobs:
 
       - name: Move picks files
         run: |
-          if [ -d "picks/picks-"* ]; then
-            mv picks/picks-*/* picks/ 2>/dev/null || true
-          fi
+          # Retention is 7 days and generate runs twice a week, so two
+          # artifact dirs is the normal case — `[ -d picks/picks-* ]` then
+          # expands to two words and the test errors out, silently skipping
+          # the move and leaving check_results.py with nothing to score.
+          for d in picks/picks-*/; do
+            [ -d "$d" ] && mv "$d"* picks/ 2>/dev/null || true
+          done
           echo "=== Picks files ==="
           ls -la picks/ || echo "No picks directory"
 
