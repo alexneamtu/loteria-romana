@@ -175,34 +175,67 @@ def build_game_message(
     return "\n".join(lines)
 
 
+# game_label -> (pool size, numbers drawn, main matches needed for a prize)
+GAME_ODDS = {
+    "JOKER": (45, 5, 3),
+    "LOTO 6/49": (49, 6, 3),
+    "LOTO 5/40": (40, 6, 4),
+}
+
+
 def build_comparison_message(
     game_results: list[tuple[str, str, dict[str, dict], int]],
 ) -> str:
-    """Build a summary comparison message across all games."""
-    lines = ["📊 *Strategy Ranking*"]
+    """Summarise each builder against the chance baseline.
+
+    Ranking individual tickets is meaningless: ticket index is positional and
+    regenerated every draw, so the "winner" is just the luckiest sample of one
+    builder. What is worth sending is per-builder hits vs expectation, how many
+    standard deviations off that is, and whether anything actually won money.
+
+    Returns "" when there is nothing to report, so the caller can skip sending.
+    """
+    lines = ["📊 *vs chance*"]
+    have_data = False
 
     for emoji, game_label, strategy_results, match_total in game_results:
         if not strategy_results:
             continue
+        have_data = True
+        pool, drawn, prize_at = GAME_ODDS.get(game_label, (0, 0, match_total))
+
+        builders: dict[str, dict] = {}
+        for data in strategy_results.values():
+            b = builders.setdefault(
+                data.get("builder_name") or "?",
+                {"tickets": 0, "hits": 0, "best": 0, "exp": 0.0, "var": 0.0, "prizes": 0},
+            )
+            b["tickets"] += 1
+            b["hits"] += data["score"]
+            b["best"] = max(b["best"], data["best_match"])
+            for r in data["results"]:
+                n, p = len(r["pick"]), (drawn / pool if pool else 0.0)
+                b["exp"] += n * p
+                # ponytail: lines are summed as independent hypergeometrics. They
+                # share one draw, so real sd is larger and sigma reads a bit hot.
+                # Fine for "is this noise?"; do the covariance if you ever act on it.
+                b["var"] += n * p * (1 - p) * (pool - n) / (pool - 1) if pool > 1 else 0.0
+                b["prizes"] += r["count"] >= prize_at
 
         lines.append(f"\n{emoji} *{game_label}*")
         lines.append("```")
-
-        ranked = sorted(
-            strategy_results.items(),
-            key=lambda item: (item[1]["score"], item[1]["best_match"]),
-            reverse=True,
-        )
-
-        for i, (strategy, data) in enumerate(ranked):
-            best = data["best_match"]
-            score = data["score"]
-            medal = ["🥇", "🥈", "🥉"][i] if i < 3 else "  "
-            lines.append(f"{medal} {strategy}: {score} total (best {best}/{match_total})")
-
+        for name, b in sorted(builders.items(), key=lambda kv: -kv[1]["hits"]):
+            sigma = (b["hits"] - b["exp"]) / b["var"] ** 0.5 if b["var"] > 0 else 0.0
+            lines.append(
+                f"{name}: {b['hits']} hits vs {b['exp']:.0f} expected ({sigma:+.1f}σ)"
+            )
+            lines.append(
+                f"  {b['tickets']} tickets · best {b['best']}/{match_total} · "
+                f"{b['prizes']} prize lines (needs {prize_at}+)"
+            )
         lines.append("```")
 
-    return "\n".join(lines)
+    return "\n".join(lines) if have_data else ""
 
 
 HISTORY_COLUMNS = [
@@ -549,8 +582,13 @@ def main():
         log(f"Wrote {game_key} results message")
 
     comparison = build_comparison_message(all_game_results)
-    (output_dir / "comparison.txt").write_text(comparison, encoding="utf-8")
-    log("Wrote comparison message")
+    comparison_path = output_dir / "comparison.txt"
+    if comparison:
+        comparison_path.write_text(comparison, encoding="utf-8")
+        log("Wrote comparison message")
+    else:
+        comparison_path.unlink(missing_ok=True)
+        log("Nothing to compare, skipping comparison message")
 
     detail_path = Path(os.environ.get("PICKS_DETAIL_PATH", "data/results/picks_detail.jsonl"))
     write_picks_detail(detail_path, detail_rows)

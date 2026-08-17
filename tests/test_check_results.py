@@ -226,3 +226,31 @@ class TestSideGameRetry(unittest.TestCase):
         self.assertFalse(is_side_game_ready(FakeDraw(noroc_plus=None), attr="noroc_plus"))
         self.assertTrue(is_side_game_ready(FakeDraw(noroc="1234567"), attr="noroc"))
         self.assertFalse(is_side_game_ready(FakeDraw(), attr="super_noroc"))
+
+
+class TestComparisonMessage(unittest.TestCase):
+    def _ticket(self, picks, counts, builder="independent"):
+        return {
+            "results": [{"pick": p, "matched": [], "count": c} for p, c in zip(picks, counts)],
+            "score": sum(counts),
+            "best_match": max(counts),
+            "builder_name": builder,
+        }
+
+    def test_groups_by_builder_not_ticket_index(self):
+        results = {
+            "independent_0": self._ticket([[1, 2, 3, 4, 5]], [1]),
+            "independent_1": self._ticket([[1, 2, 3, 4, 5]], [3]),
+            "core_share_0": self._ticket([[1, 2, 3, 4, 5]], [0], builder="core_share"),
+        }
+        msg = check_results.build_comparison_message([("🃏", "JOKER", results, 5)])
+        self.assertIn("independent: 4 hits", msg)
+        self.assertIn("core_share: 0 hits", msg)
+        self.assertNotIn("independent_1", msg)
+        # 2 joker lines: expected 2 * 5 * 5/45 = 1.1 -> rounds to 1
+        self.assertIn("vs 1 expected", msg)
+        # only the 3-match line clears the 3+ prize threshold
+        self.assertIn("1 prize lines", msg)
+
+    def test_empty_when_no_results(self):
+        self.assertEqual(check_results.build_comparison_message([("🃏", "JOKER", {}, 5)]), "")

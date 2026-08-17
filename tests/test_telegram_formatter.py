@@ -132,3 +132,34 @@ class TestTelegramFormatter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBuyList(unittest.TestCase):
+    def _ticket(self, n_variants=4, cost=22.5):
+        return {
+            "game": "loto_540",
+            "variants": [{"main_numbers": [2, 9, 15, 27, 34], "bonus_number": None}] * n_variants,
+            "side_game_number": "012345",
+            "strategy": "independent",
+            "cost_ron": cost,
+        }
+
+    def test_one_message_per_game_with_bulletin_shape(self):
+        msgs = format_tickets([self._ticket(), self._ticket()], draw_date="2026-08-17")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("buy 2 ticket(s)", msgs[0])
+        self.assertIn("Each bulletin: 4 variants + Super Noroc", msgs[0])
+        self.assertIn("Total: 45.00 RON", msgs[0])
+        self.assertIn("#1", msgs[0])
+        self.assertIn("#2", msgs[0])
+
+    def test_flags_ticket_that_cannot_fill_a_bulletin(self):
+        msg = format_tickets([self._ticket(n_variants=2)], draw_date="2026-08-17")[0]
+        self.assertIn("⚠️", msg)
+        self.assertIn("do not have 4 variants", msg)
+
+    def test_splits_when_over_telegram_limit(self):
+        msgs = format_tickets([self._ticket() for _ in range(80)], draw_date="2026-08-17")
+        self.assertGreater(len(msgs), 1)
+        self.assertTrue(all(len(m) < 4096 for m in msgs))
+        self.assertEqual(sum(m.count("#") for m in msgs), 80)
