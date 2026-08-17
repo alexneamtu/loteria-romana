@@ -61,15 +61,15 @@ class TestEVGate(unittest.TestCase):
 
 
 class TestApplyEVGateV2(unittest.TestCase):
-    # Breakevens from EVCalculator with main-ticket-only costs:
-    # joker ≈ 346M, loto_649 ≈ 337M, loto_540 ≈ 2.23M.
+    # Per-line breakevens from EVCalculator (main-ticket cost / variants):
+    # joker ≈ 169M, loto_649 ≈ 108M, loto_540 ≈ 548K.
     SKIP_RATIO = 0.5
     BOOST_RATIO = 1.2
 
     def test_skip_when_all_ratios_below_threshold(self):
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": 500_000.0},
+            jackpots={"joker": 50_000_000.0, "loto_649": 50_000_000.0, "loto_540": 200_000.0},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -79,10 +79,10 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("loto_540=", decision.reason)
 
     def test_play_when_some_ratio_in_band(self):
-        # loto_540 jackpot = ~1.8M (ratio ~0.8 vs ~2.23M breakeven)
+        # loto_540 jackpot = ~500K (ratio ~0.91 vs ~548K breakeven)
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 1_800_000.0},
+            jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 500_000.0},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -90,7 +90,7 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertIn("loto_540=", decision.reason)
 
     def test_boost_when_max_ratio_above_threshold(self):
-        # loto_540 jackpot = ~3.5M (ratio ~1.57 vs ~2.23M breakeven)
+        # loto_540 jackpot = ~3.5M (ratio ~6.4 vs ~548K breakeven)
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
             jackpots={"joker": 1.0, "loto_649": 1.0, "loto_540": 3_500_000.0},
@@ -136,14 +136,14 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertGreater(balance, 0.0)
 
     def test_joker_uses_main_ticket_cost_not_bundled(self):
-        # Joker jackpot = 200M. With main-ticket-only breakeven (~346M),
-        # ratio ≈ 0.58 → play. If the gate accidentally used the full
-        # ticket cost (17.5 incl. Noroc Plus), breakeven would balloon
-        # to ~427M and ratio would be 0.47 → skip. Guard against that
+        # Joker jackpot = 95M. With main-ticket-only breakeven (~169M),
+        # ratio ≈ 0.56 → play. If the gate accidentally used the full
+        # ticket cost (17.5 incl. Noroc Plus), breakeven would rise to
+        # ~206M and ratio would be 0.46 → skip. Guard against that
         # regression.
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 200_000_000.0, "loto_649": 1.0, "loto_540": 1.0},
+            jackpots={"joker": 95_000_000.0, "loto_649": 1.0, "loto_540": 1.0},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -189,7 +189,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
         self.assertEqual(gate_v2.call_args.kwargs["skip_ratio"], 0.10)
 
     def test_dead_band_credits_ledger_and_writes_skip_notice(self):
-        # loto_540 breakeven ≈ 2.23M, so a 500k jackpot is ratio ≈ 0.22:
+        # loto_540 breakeven ≈ 548K, so a 120k jackpot is ratio ≈ 0.22:
         # above skip_ratio (plays) but below min_ratio (every game blocked).
         nonzero = TicketAllocation(
             tickets={"joker": 0, "loto_649": 0, "loto_540": 1},
@@ -207,7 +207,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "generate_recommended_picks.py", "--budget", "70", "--ev-gate",
                     "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "500000",
+                    "--loto540-jackpot", "120000",
                     "--ledger-path", str(ledger_path),
                     "--output-dir", str(out_dir),
                 ]):
@@ -238,7 +238,7 @@ class TestGateThresholdsStayCoherent(unittest.TestCase):
                     "--mixes", "3",
                     "--ev-skip-ratio", "0.01", "--ev-min-ratio", "0.80",
                     "--joker-jackpot", "1", "--loto649-jackpot", "1",
-                    "--loto540-jackpot", "500000",
+                    "--loto540-jackpot", "120000",
                     "--ledger-path", str(ledger_path),
                     "--output-dir", str(out_dir),
                 ]):
@@ -451,21 +451,28 @@ class TestEVSkipBoost(unittest.TestCase):
             out = Path(tmp) / "picks"
             ledger_path = out / "ledger.json"
             out.mkdir(parents=True)
-            # Pre-credit the ledger
-            ledger_path.write_text(json.dumps({"balance": 40.0, "entries": []}))
+            # Pre-credit enough that 25% of the balance funds more than one
+            # extra Joker ticket, so the released boost is actually deployed
+            # and the ledger is net-debited. A smaller release would be spent
+            # only up to ticket granularity and the remainder credited back
+            # by the unused-boost refund, leaving the balance unchanged.
+            ledger_path.write_text(json.dumps({"balance": 1000.0, "entries": []}))
             subprocess.check_call([
                 sys.executable, "scripts/generate_recommended_picks.py",
                 "--budget", "70", "--seed", "42", "--output-dir", str(out),
                 "--ev-gate", "--ev-boost-ratio", "1.2",
-                "--joker-jackpot", "600000000",  # huge jackpot → ratio > 1.2 → boost
+                "--joker-jackpot", "600000000",  # ratio > 1.2 → boost
+                # Provide the other two so the test never hits the network.
+                "--loto649-jackpot", "0",
+                "--loto540-jackpot", "0",
                 "--ledger-path", str(ledger_path),
             ], env={"PYTHONPATH": "src", "PATH": ""})
             # tickets.json emitted with budget > 70 (boosted)
             doc = json.loads((out / "tickets.json").read_text())
             self.assertGreater(doc["budget_ron"], 70.0)
-            # Ledger debited
+            # Ledger net-debited after the boost was deployed
             led = json.loads(ledger_path.read_text())
-            self.assertLess(led["balance"], 40.0)
+            self.assertLess(led["balance"], 1000.0)
 
 
 if __name__ == "__main__":
