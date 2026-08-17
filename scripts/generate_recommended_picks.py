@@ -150,11 +150,15 @@ def load_joker_draws():
     return load_draws(csv_path)
 
 
-def _parse_bucket_budget(raw: str | None) -> dict[str, float] | None:
+def _parse_bucket_budget(
+    raw: str | None, budget: float | None = None
+) -> dict[str, float] | None:
     """Parse `--bucket-budget` like 'joker=20,loto_649=30,loto_540=25' into a dict.
 
     Returns None when the flag is unset. Unknown games raise SystemExit so
-    typos fail loudly rather than silently falling through to all-Joker.
+    typos fail loudly rather than silently falling through to all-Joker, and
+    so does a split that exceeds `budget` — each bucket is allocated
+    independently, so the sum is what actually gets spent.
     """
     if raw is None or not raw.strip():
         return None
@@ -174,6 +178,11 @@ def _parse_bucket_budget(raw: str | None) -> dict[str, float] | None:
             out[game] = float(amount)
         except ValueError as exc:
             raise SystemExit(f"--bucket-budget amount {amount!r} is not numeric") from exc
+    total = sum(out.values())
+    if budget is not None and total > budget:
+        raise SystemExit(
+            f"--bucket-budget sums to {total:.2f} RON, over --budget {budget:.2f} RON"
+        )
     return out
 
 
@@ -331,7 +340,7 @@ def apply_ev_gate(
 
     for game_name, game in games.items():
         jackpot = jackpots.get(game_name)
-        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
         ratio = 0.0
         if jackpot and breakeven and breakeven > 0:
             ratio = jackpot / breakeven
@@ -412,7 +421,7 @@ def apply_ev_gate_v2(
     breakevens: dict[str, float] = {}
     for game_name, game in games.items():
         jackpot = jackpots.get(game_name)
-        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, 0.0)  # noqa: SLF001
+        breakeven = calc._calculate_positive_ev_jackpot(game, 1.0, None)  # noqa: SLF001
         breakevens[game_name] = float(breakeven or 0)
         if jackpot is None or breakeven is None or breakeven <= 0:
             ratios[game_name] = 0.0
@@ -598,7 +607,12 @@ def main():
             print(f"EV gate: BOOST +{actual:.2f} → effective {effective_budget:.2f} RON")
 
     if args.mixes > 1:
-        allocations = _top_n_diverse_allocations(effective_budget, args.mixes)
+        # Every mix is bought, so they share the budget. Sizing each one to
+        # the full budget spent `mixes x budget` in real tickets — --mixes 3
+        # on 400 RON emitted 1,171 RON of tickets.
+        allocations = _top_n_diverse_allocations(
+            effective_budget / args.mixes, args.mixes
+        )
         if args.ev_gate:
             filtered = []
             mix_details: dict = {}
@@ -680,7 +694,7 @@ def main():
             tickets=all_db_rows,
         )
     else:
-        buckets = _parse_bucket_budget(args.bucket_budget)
+        buckets = _parse_bucket_budget(args.bucket_budget, effective_budget)
         if buckets is not None:
             allocation = best_per_game_allocation(buckets)
         else:

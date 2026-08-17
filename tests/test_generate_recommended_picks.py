@@ -14,6 +14,16 @@ from shared.ev_calculator import EVCalculator
 from shared.ticket_allocator import TicketAllocation
 
 
+def _breakeven(factory) -> float:
+    calc = EVCalculator()
+    return calc._calculate_positive_ev_jackpot(factory(), 1.0, None)  # noqa: SLF001
+
+
+def joker_jackpot_at(ratio: float) -> float:
+    """Joker jackpot giving this jackpot/breakeven ratio."""
+    return round(ratio * _breakeven(EVCalculator.create_joker), 2)
+
+
 def loto540_jackpot_at(ratio: float) -> float:
     """5/40 jackpot giving this jackpot/breakeven ratio.
 
@@ -21,9 +31,7 @@ def loto540_jackpot_at(ratio: float) -> float:
     bands, and a frozen jackpot silently changes band whenever the breakeven
     is corrected (as it was when Category I dropped from 6/C(40,5) to 1).
     """
-    calc = EVCalculator()
-    breakeven = calc._calculate_positive_ev_jackpot(calc.create_loto_540(), 1.0, 0.0)  # noqa: SLF001
-    return round(ratio * breakeven, 2)
+    return round(ratio * _breakeven(EVCalculator.create_loto_540), 2)
 
 
 # Subprocess-based tests spawn the real orchestrator end-to-end (loading
@@ -149,14 +157,12 @@ class TestApplyEVGateV2(unittest.TestCase):
         self.assertGreater(balance, 0.0)
 
     def test_joker_uses_main_ticket_cost_not_bundled(self):
-        # Joker jackpot = 95M. With main-ticket-only breakeven (~169M),
-        # ratio ≈ 0.56 → play. If the gate accidentally used the full
-        # ticket cost (17.5 incl. Noroc Plus), breakeven would rise to
-        # ~206M and ratio would be 0.46 → skip. Guard against that
-        # regression.
+        # Ratio 0.56 on main-ticket-only cost (14.5) -> play. Had the gate
+        # used the bundled cost (17.5 incl. Noroc Plus), breakeven would be
+        # ~21% higher and the same jackpot would read 0.46 -> skip.
         decision = recommended_script.apply_ev_gate_v2(
             budget=40.0,
-            jackpots={"joker": 95_000_000.0, "loto_649": 1.0, "loto_540": 1.0},
+            jackpots={"joker": joker_jackpot_at(0.56), "loto_649": 1.0, "loto_540": 1.0},
             skip_ratio=self.SKIP_RATIO,
             boost_ratio=self.BOOST_RATIO,
         )
@@ -523,3 +529,31 @@ class TestEVSkipBoost(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBudgetIsNotMultiplied(unittest.TestCase):
+    def test_bucket_budget_over_total_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            recommended_script._parse_bucket_budget(  # noqa: SLF001
+                "joker=400,loto_649=400,loto_540=400", 400.0
+            )
+
+    def test_bucket_budget_within_total_is_accepted(self):
+        buckets = recommended_script._parse_bucket_budget(  # noqa: SLF001
+            "joker=100,loto_649=200,loto_540=100", 400.0
+        )
+        self.assertEqual(sum(buckets.values()), 400.0)
+
+    def test_mixes_share_the_budget_instead_of_each_taking_it(self):
+        seen = []
+        with mock.patch.object(
+            recommended_script, "_top_n_diverse_allocations",
+            side_effect=lambda budget, n: seen.append(budget) or [],
+        ), mock.patch.object(recommended_script, "resolve_recency_settings", return_value=(50.0, "draws")), \
+            mock.patch.object(recommended_script, "persist_generation_run", return_value=True), \
+            mock.patch("builtins.print"), \
+            mock.patch("sys.argv", [
+                "generate_recommended_picks.py", "--budget", "400", "--mixes", "4",
+            ]):
+            recommended_script.main()
+        self.assertEqual(seen, [100.0])  # 400 / 4, not 400 four times

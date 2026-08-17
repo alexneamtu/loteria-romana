@@ -12,9 +12,15 @@ The key insight: EV is almost always negative, but certain conditions
 (large jackpots, roll-down events) can create +EV situations.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
-import math
+
+from .tax import gross_for_net, net_of_tax
+
+# Share of stakes returned as prizes across all tiers. Romanian lotto base
+# funding is ~45%; used only to estimate non-jackpot pari-mutuel prizes.
+PARIMUTUEL_PAYOUT_FRACTION = 0.45
 
 
 @dataclass
@@ -349,7 +355,7 @@ class EVCalculator:
     def calculate_ev(self, game: LotteryGame,
                      jackpot: Optional[float] = None,
                      expected_winners: float = 1.0,
-                     tax_rate: float = 0.0) -> EVResult:
+                     tax_rate: Optional[float] = None) -> EVResult:
         """
         Calculate expected value for a lottery ticket.
 
@@ -357,7 +363,8 @@ class EVCalculator:
             game: Lottery game configuration
             jackpot: Current jackpot amount (uses seed if not provided)
             expected_winners: Expected number of jackpot winners (for splitting)
-            tax_rate: Tax rate on winnings (0-1)
+            tax_rate: Flat rate on winnings (0-1), or None (default) for
+                the Romanian progressive schedule
 
         Returns:
             EVResult with detailed breakdown
@@ -368,23 +375,17 @@ class EVCalculator:
         total_ev = 0.0
         tier_breakdown = []
 
+        jackpot_tier = self._jackpot_tier(game)
+
         for tier in game.prize_tiers:
-            if tier.fixed_prize is not None:
-                prize = tier.fixed_prize
-            elif tier.matches_required == game.numbers_drawn or \
-                 (tier.matches_required == game.numbers_picked and
-                  tier.bonus_required and game.has_bonus):
-                # Jackpot tier - share among expected winners
+            if tier is jackpot_tier:
                 prize = jackpot / expected_winners
+            elif tier.fixed_prize is not None:
+                prize = tier.fixed_prize
             else:
-                # Other pari-mutuel tiers (estimate based on percentage)
-                # Rough estimate: assume prize pool is ~50% of ticket sales
-                prize = 1000.0 * (tier.prize_pool_percentage or 0.05)
+                prize = self._parimutuel_prize(game, tier)
 
-            # Apply tax
-            net_prize = prize * (1 - tax_rate)
-
-            # Calculate EV contribution
+            net_prize = self._net_prize(prize, tax_rate)
             ev_contribution = tier.probability * net_prize
             total_ev += ev_contribution
 
@@ -397,9 +398,12 @@ class EVCalculator:
                 "ev_contribution": ev_contribution
             })
 
-        # Final EV is total expected returns minus ticket cost
-        net_ev = total_ev - game.ticket_cost
-        return_pct = (total_ev / game.ticket_cost) * 100
+        # total_ev is per line (tier probabilities are per line) but
+        # ticket_cost buys lines_per_ticket of them. Scale before subtracting,
+        # or a 4-line 5/40 ticket looks 3 lines' worth of returns short.
+        ticket_ev = total_ev * game.lines_per_ticket
+        net_ev = ticket_ev - game.ticket_cost
+        return_pct = (ticket_ev / game.ticket_cost) * 100
 
         # Calculate jackpot needed for +EV
         jackpot_for_positive = self._calculate_positive_ev_jackpot(
@@ -419,31 +423,91 @@ class EVCalculator:
             analysis=analysis
         )
 
+    @staticmethod
+    def _jackpot_tier(game: LotteryGame) -> Optional[PrizeTier]:
+        """The single top tier.
+
+        For a bonus game that is "all main numbers + the bonus"; otherwise
+        "all numbers drawn". Testing `matches_required == numbers_drawn`
+        alone also matched Joker's Category II (5 main, no Joker), which was
+        then paid the entire jackpot in calculate_ev.
+        """
+        for tier in game.prize_tiers:
+            if game.has_bonus:
+                if tier.bonus_required and tier.matches_required == game.numbers_picked:
+                    return tier
+            elif tier.matches_required == game.numbers_drawn:
+                return tier
+        return None
+
+    @staticmethod
+    def _parimutuel_prize(game: LotteryGame, tier: PrizeTier) -> float:
+        """Estimate a non-jackpot pari-mutuel prize.
+
+        A tier's pool is `pct` of the prize fund, the fund is
+        `PARIMUTUEL_PAYOUT_FRACTION` of sales, and the winners in that tier
+        are `sales_lines * p`. Sales cancel:
+
+            prize = pct * payout_fraction * price_per_line / p
+
+        The old `1000.0 * pct` dropped the `1/p`, which is the whole point —
+        a rarer tier pays more. That understated Category II prizes by two to
+        three orders of magnitude.
+
+        ponytail: payout_fraction is one national average, not per-game and
+        not per-draw. Checked against Aug-2026 loto.ro reports it lands within
+        ~2-3x of actual; swap in scraped per-draw pools if the gate ever needs
+        better than that.
+        """
+        if tier.probability <= 0:
+            return 0.0
+        pct = tier.prize_pool_percentage or 0.05
+        price_per_line = game.ticket_cost / game.lines_per_ticket
+        return pct * PARIMUTUEL_PAYOUT_FRACTION * price_per_line / tier.probability
+
+    @staticmethod
+    def _net_prize(prize: float, tax_rate: Optional[float]) -> float:
+        """After-tax prize. `tax_rate=None` uses the Romanian schedule."""
+        if tax_rate is None:
+            return net_of_tax(prize)
+        return prize * (1 - tax_rate)
+
+    @staticmethod
+    def _gross_prize(net: float, tax_rate: Optional[float]) -> float:
+        """Inverse of _net_prize."""
+        if tax_rate is None:
+            return gross_for_net(net)
+        if tax_rate >= 1:
+            return float("inf")
+        return net / (1 - tax_rate)
+
     def _calculate_positive_ev_jackpot(self, game: LotteryGame,
                                        expected_winners: float,
-                                       tax_rate: float) -> Optional[float]:
+                                       tax_rate: Optional[float]) -> Optional[float]:
         """
         Calculate minimum jackpot needed for positive EV.
 
         Returns None if +EV is impossible (no jackpot tier).
         """
-        # Find jackpot tier
-        jackpot_tier = None
-        for tier in game.prize_tiers:
-            if tier.matches_required == game.numbers_drawn or \
-               (tier.matches_required == game.numbers_picked and
-                tier.bonus_required and game.has_bonus):
-                jackpot_tier = tier
-                break
+        jackpot_tier = self._jackpot_tier(game)
 
         if jackpot_tier is None or jackpot_tier.probability == 0:
             return None
 
-        # Calculate fixed EV from non-jackpot tiers
+        # Expected net return per line from every tier below the jackpot.
+        # Pari-mutuel tiers used to be dropped here (only `fixed_prize` ones
+        # counted), which pretended Category II pays nothing and pushed the
+        # breakeven jackpot up.
         fixed_ev = 0.0
         for tier in game.prize_tiers:
-            if tier is not jackpot_tier and tier.fixed_prize is not None:
-                fixed_ev += tier.probability * tier.fixed_prize * (1 - tax_rate)
+            if tier is jackpot_tier:
+                continue
+            prize = (
+                tier.fixed_prize
+                if tier.fixed_prize is not None
+                else self._parimutuel_prize(game, tier)
+            )
+            fixed_ev += tier.probability * self._net_prize(prize, tax_rate)
 
         # A ticket buys `lines_per_ticket` independent lines, but the tier
         # probabilities and fixed_ev above are per line. Spread the whole-
@@ -455,13 +519,14 @@ class EVCalculator:
         # jackpot > (cost/lines - fixed_ev) * winners / (P(jackpot) * (1-tax))
         cost_per_line = game.ticket_cost / game.lines_per_ticket
         needed_ev = cost_per_line - fixed_ev
-        denominator = jackpot_tier.probability * (1 - tax_rate)
+        if jackpot_tier.probability <= 0:
+            return None
 
-        if denominator > 0:
-            min_jackpot = (needed_ev * expected_winners) / denominator
-            return max(0, min_jackpot)
-
-        return None
+        # Net jackpot share that closes the gap, then gross it back up. The
+        # tax is progressive, so this cannot be a `/(1 - rate)` division.
+        needed_net_share = (needed_ev * expected_winners) / jackpot_tier.probability
+        gross_share = self._gross_prize(needed_net_share, tax_rate)
+        return max(0.0, gross_share * expected_winners)
 
     def _generate_analysis(self, game: LotteryGame, jackpot: float,
                           net_ev: float, jackpot_for_positive: Optional[float]) -> str:
@@ -583,7 +648,7 @@ class EVCalculator:
         multi_ev = single_ev.expected_value * num_tickets
 
         # Calculate breakeven jackpot
-        breakeven = self._calculate_positive_ev_jackpot(game, 1.0, 0.0)
+        breakeven = self._calculate_positive_ev_jackpot(game, 1.0, None)
 
         return {
             "current_jackpot": jackpot,

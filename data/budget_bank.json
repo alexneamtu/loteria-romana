@@ -1,5 +1,5 @@
 {
-  "balance": 1277.5,
+  "balance": 1837.5,
   "entries": [
     {
       "kind": "credit",
@@ -212,6 +212,12 @@
       "draw_date": "2026-08-17",
       "amount": 17.5,
       "reason": "unused boost (released 420.00, spent 472.50)"
+    },
+    {
+      "kind": "credit",
+      "draw_date": "2026-08-17-correction",
+      "amount": 560.0,
+      "reason": "correction: boost released by the run cancelled 11:32Z was never spent and never refunded (boost-leak defect). The 420.00 and 319.38 releases the same draw did buy tickets and are not recoverable."
     }
   ]
 }
