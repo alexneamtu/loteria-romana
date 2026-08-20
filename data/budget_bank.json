@@ -1,5 +1,5 @@
 {
-  "balance": 1525.0,
+  "balance": 1595.0,
   "entries": [
     {
       "kind": "credit",
@@ -231,6 +231,12 @@
       "draw_date": "2026-08-17-correction",
       "amount": 560.0,
       "reason": "correction: boost released by the run cancelled 11:32Z was never spent and never refunded (boost-leak defect). The 420.00 and 319.38 releases the same draw did buy tickets and are not recoverable."
+    },
+    {
+      "kind": "credit",
+      "draw_date": "2026-08-20",
+      "amount": 70.0,
+      "reason": "all ratios < 0.1 (joker=0.01  loto_649=0.01  loto_540=0.07)"
     }
   ]
 }
