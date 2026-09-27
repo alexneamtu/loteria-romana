@@ -9,12 +9,14 @@ on:
       budget:
         description: 'Budget in RON (optimally allocated across games)'
         required: false
-        default: '70'
+        # 53 buys 3 Joker tickets with Noroc Plus (52.5 RON, ~21% chance of
+        # any prize per draw), the best odds per RON the allocator can find.
+        default: '53'
         type: string
       ev_gate:
         description: 'Enable EV/jackpot gate before generating picks'
         required: false
-        default: 'true'
+        default: 'false'
         type: string
       ev_min_ratio:
         description: 'Minimum jackpot/breakeven ratio when EV gate is enabled'
@@ -81,13 +83,15 @@ jobs:
         run: |
           budget="${{ github.event.inputs.budget }}"
           if [ -z "$budget" ] || ! [[ "$budget" =~ ^[0-9]+$ ]]; then
-            budget="70"
+            budget="53"
           fi
           ev_gate="${{ github.event.inputs.ev_gate }}"
-          # Default ON for scheduled runs (empty input). Manual dispatch can
-          # still disable by passing 'false'.
+          # Default OFF for scheduled runs (empty input). Jackpot size does not
+          # change the odds or amounts of the lower tiers (no roll-down), and
+          # the per-game filter pushed every draw onto 5/40, the worst game for
+          # P(any prize). Manual dispatch can still enable it with 'true'.
           if [ -z "$ev_gate" ]; then
-            ev_gate="true"
+            ev_gate="false"
           fi
           if [ "$ev_gate" != "true" ]; then
             ev_gate="false"

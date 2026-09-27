@@ -183,6 +183,13 @@ GAME_ODDS = {
 }
 
 
+def _is_prize_line(game_label: str, result: dict, prize_at: int) -> bool:
+    """Joker also pays 1+J and 2+J, its most common prizes."""
+    if game_label == "JOKER" and result.get("joker_match") and result["count"] >= 1:
+        return True
+    return result["count"] >= prize_at
+
+
 def build_comparison_message(
     game_results: list[tuple[str, str, dict[str, dict], int]],
 ) -> str:
@@ -220,7 +227,7 @@ def build_comparison_message(
                 # share one draw, so real sd is larger and sigma reads a bit hot.
                 # Fine for "is this noise?"; do the covariance if you ever act on it.
                 b["var"] += n * p * (1 - p) * (pool - n) / (pool - 1) if pool > 1 else 0.0
-                b["prizes"] += r["count"] >= prize_at
+                b["prizes"] += _is_prize_line(game_label, r, prize_at)
 
         lines.append(f"\n{emoji} *{game_label}*")
         lines.append("```")
@@ -429,7 +436,14 @@ def _get_winning_side(game_key: str, draws) -> str | None:
     return None
 
 
-def _score_ticket_obj(ticket, winning_main, game_key: str, winning_side: str | None) -> dict:
+def _joker_match(variant, winning_joker: int | None) -> bool:
+    return winning_joker is not None and variant.bonus_number == winning_joker
+
+
+def _score_ticket_obj(
+    ticket, winning_main, game_key: str, winning_side: str | None,
+    winning_joker: int | None = None,
+) -> dict:
     """Score a Ticket object against winning numbers. Returns strategy_results entry."""
     best_main = ticket.best_main_match(winning_main)
     total_matches = sum(v.count_main_matches(winning_main) for v in ticket.variants)
@@ -437,7 +451,12 @@ def _score_ticket_obj(ticket, winning_main, game_key: str, winning_side: str | N
     side_exact, side_digits = score_side_game_match(ticket.game, ticket.side_game_number, winning_side)
     return {
         "results": [
-            {"pick": list(v.main_numbers), "matched": sorted(set(v.main_numbers) & set(winning_main)), "count": v.count_main_matches(winning_main)}
+            {
+                "pick": list(v.main_numbers),
+                "matched": sorted(set(v.main_numbers) & set(winning_main)),
+                "count": v.count_main_matches(winning_main),
+                "joker_match": _joker_match(v, winning_joker),
+            }
             for v in ticket.variants
         ],
         "score": total_matches,
@@ -513,12 +532,15 @@ def main():
                 else:
                     winning_str = ", ".join(str(n) for n in winning_main)
                 winning_side = _get_winning_side(game_key, draws_for_game)
+                winning_joker = getattr(latest, "joker", None)
                 log(f"Latest {game_label}: {draw_date} - {winning_str}")
 
                 strategy_results = {}
                 scored_tickets = []
                 for idx, ticket in enumerate(json_tickets):
-                    data = _score_ticket_obj(ticket, winning_main, game_key, winning_side)
+                    data = _score_ticket_obj(
+                        ticket, winning_main, game_key, winning_side, winning_joker,
+                    )
                     ticket_id = f"{draw_date}-{game_key}-{ticket.strategy}-{idx}"
                     data["ticket_id"] = ticket_id
                     strat_key = f"{ticket.strategy}_{idx}"
@@ -553,7 +575,11 @@ def main():
                         "strategy": ticket.strategy,
                         "best_main_match": best_main,
                         "variants": [
-                            {"main_numbers": list(v.main_numbers), "bonus_number": v.bonus_number}
+                            {
+                                "main_numbers": list(v.main_numbers),
+                                "bonus_number": v.bonus_number,
+                                "joker_match": _joker_match(v, winning_joker),
+                            }
                             for v in ticket.variants
                         ],
                         "side_game_number": ticket.side_game_number,

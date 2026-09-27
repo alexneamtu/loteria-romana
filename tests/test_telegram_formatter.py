@@ -41,7 +41,7 @@ class TestTelegramFormatter(unittest.TestCase):
         self.assertIn("17.5", msg)
         self.assertIn("3, 7, 12, 19, 28", msg)
         self.assertIn("+ J11", msg)
-        self.assertIn("NP07", msg)
+        self.assertIn("tick Noroc Plus", msg)
 
     def test_loto_649_message_shows_noroc(self):
         msg = format_tickets([{
@@ -56,8 +56,7 @@ class TestTelegramFormatter(unittest.TestCase):
             "cost_ron": 28.5,
         }], draw_date="2026-04-21")[0]
         self.assertIn("LOTO 6/49", msg)
-        self.assertIn("1234567", msg)
-        self.assertIn("Noroc", msg)
+        self.assertIn("tick Noroc (", msg)
 
     def test_loto_540_message_shows_super_noroc(self):
         msg = format_tickets([{
@@ -70,8 +69,7 @@ class TestTelegramFormatter(unittest.TestCase):
             "cost_ron": 22.5,
         }], draw_date="2026-04-21")[0]
         self.assertIn("LOTO 5/40", msg)
-        self.assertIn("012345", msg)
-        self.assertIn("Super Noroc", msg)
+        self.assertIn("tick Super Noroc", msg)
 
     def test_summary_aggregates_all_tickets(self):
         tickets = [
@@ -180,13 +178,18 @@ class TestOdds(unittest.TestCase):
         msg = format_summary(tickets, budget_ron=40.0, total_cost_ron=40.0, draw_date="2026-08-17")
         self.assertIn("best odds first", msg)
         self.assertIn("P(win anything this draw):", msg)
-        # joker (~1 in 17) must be listed before 5/40 (~1 in 319)
+        # joker (~1 in 13 with Noroc Plus) must be listed before 5/40 (~1 in 43)
         self.assertLess(msg.index("Joker"), msg.index("Loto 5/40"))
-        self.assertIn("1 in 17", msg)
+        self.assertIn("1 in 13", msg)
 
     def test_ticket_messages_ordered_best_odds_first_with_odds_line(self):
         tickets = [self._ticket("loto_540", 4, 22.5), self._ticket("joker", 2, 17.5)]
         msgs = format_tickets(tickets, draw_date="2026-08-17")
         self.assertIn("JOKER", msgs[0])
         self.assertIn("LOTO 5/40", msgs[1])
-        self.assertIn("Any prize: 1 in 17 per ticket", msgs[0])
+        self.assertIn("Any prize: 1 in 13 per ticket", msgs[0])
+
+    def test_side_game_line_says_tick_the_box_not_a_number(self):
+        msgs = format_tickets([self._ticket("joker", 2, 17.5)], draw_date="2026-08-17")
+        self.assertIn("tick Noroc Plus", msgs[0])
+        self.assertNotIn("012345", msgs[0])

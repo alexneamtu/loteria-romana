@@ -252,5 +252,40 @@ class TestComparisonMessage(unittest.TestCase):
         # only the 3-match line clears the 3+ prize threshold
         self.assertIn("1 prize lines", msg)
 
+    def test_joker_one_or_two_plus_joker_counts_as_prize(self):
+        results = {
+            "independent_0": {
+                "results": [
+                    {"pick": [1, 2, 3, 4, 5], "matched": [1], "count": 1, "joker_match": True},
+                    {"pick": [1, 2, 3, 4, 5], "matched": [1, 2], "count": 2, "joker_match": False},
+                    {"pick": [1, 2, 3, 4, 5], "matched": [], "count": 0, "joker_match": True},
+                ],
+                "score": 3,
+                "best_match": 2,
+                "builder_name": "independent",
+            },
+        }
+        msg = check_results.build_comparison_message([("🃏", "JOKER", results, 5)])
+        # only 1+J pays; 2 without the joker and joker-only do not
+        self.assertIn("1 prize lines", msg)
+
+    def test_score_ticket_marks_joker_match_per_variant(self):
+        from shared.ticket import Ticket, Variant
+
+        ticket = Ticket(
+            game="joker",
+            variants=(
+                Variant(game="joker", main_numbers=(1, 2, 3, 4, 5), bonus_number=7),
+                Variant(game="joker", main_numbers=(6, 7, 8, 9, 10), bonus_number=8),
+            ),
+            side_game_number="123456",
+            strategy="independent",
+            cost_ron=17.5,
+        )
+        data = check_results._score_ticket_obj(
+            ticket, [1, 20, 30, 40, 41], "joker", None, winning_joker=7,
+        )
+        self.assertEqual([r["joker_match"] for r in data["results"]], [True, False])
+
     def test_empty_when_no_results(self):
         self.assertEqual(check_results.build_comparison_message([("🃏", "JOKER", {}, 5)]), "")
