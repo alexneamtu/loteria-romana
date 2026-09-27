@@ -15,9 +15,12 @@ class TestGeneratePicksWorkflow(unittest.TestCase):
         self.assertIn("Enable EV/jackpot gate", self.text)
 
     def test_default_budget_present(self):
-        self.assertIn("default: '70'", self.text)
-        # ev_gate defaults ON so scheduled runs get the scraped-jackpot path.
-        self.assertIn("default: 'true'", self.text)
+        self.assertIn("default: '53'", self.text)
+        self.assertIn('budget="53"', self.text)
+        # ev_gate defaults OFF: the per-game filter forced 5/40, the worst
+        # game for P(any prize).
+        self.assertIn('ev_gate="false"', self.text)
+        self.assertNotIn('ev_gate="true"\n          fi', self.text)
 
     def test_database_env_and_driver_present(self):
         self.assertIn("DATABASE_URL", self.text)

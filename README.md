@@ -15,8 +15,8 @@ Two GitHub Actions workflows run the whole pipeline:
 
 | Workflow | Schedule | Purpose |
 |---|---|---|
-| `generate-picks.yml` | Sun + Thu at 06:00 UTC | Scrape current jackpots, run EV gate, generate ticket(s), post to Telegram |
-| `check-results.yml` | Mon + Fri at 06:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
+| `generate-picks.yml` | Sun + Thu at 02:00 UTC | Generate ticket(s) for the default 53 RON budget, post to Telegram (EV gate off by default) |
+| `check-results.yml` | Mon + Fri at 02:00 UTC | Fetch drawn numbers, score tickets, update history, post results to Telegram |
 
 Both commit their artifacts back to `main` so historical state survives across runs.
 
@@ -33,6 +33,10 @@ A real loto.ro ticket is N variants + an optional side game:
 The orchestrator emits one `picks/tickets.json` per run with the allocation, variants, and side-game number. The Telegram formatter renders one message per physical ticket grouped with its side game.
 
 ## EV gate
+
+**Off by default for scheduled runs** (enable with the `ev_gate` workflow input). The goal is the highest chance of winning any prize per RON, and jackpot size does not move that: lower tiers are pari-mutuel with no roll-down. With the gate on, the per-game filter dropped Joker and 6/49 and bought 3× Loto 5/40 every draw (67.5 RON, ~1% main-number P(any prize)). With it off, the default 53 RON buys 3 Joker tickets with Noroc Plus (52.5 RON, ~21%).
+
+The mechanics below still apply when the gate is enabled.
 
 Every scheduled run scrapes the current jackpots from the loto.ro homepage and computes `ratio = jackpot / breakeven` per game, where **breakeven** is the jackpot amount at which a ticket's expected value crosses zero.
 
@@ -250,6 +254,6 @@ data/
 
 - Lottery outcomes are random; no model improves win probability.
 - The backtest signal on current history (1000–1200 draws per game) is **not statistically significant**. CoreShare and Wheel show directional jackpot-tilt vs Independent but sample size is too small for conclusive claims.
-- At the default 70 RON budget the allocator picks all-Joker (it dominates `P(any win) / RON` by 3–50×). Use `--bucket-budget joker=X,loto_649=Y,loto_540=Z` to force coverage of non-dominant games.
+- At the default 53 RON budget the allocator picks all-Joker (it dominates `P(any win) / RON` by 3–50×). Use `--bucket-budget joker=X,loto_649=Y,loto_540=Z` to force coverage of non-dominant games.
 - Anti-crowding (playing unpopular numbers to split the jackpot less when winning) is **on by default** in `IndependentBuilder` (the scheduled production builder) and available as an opt-in flag on `CoreShareBuilder(anti_crowding=True)`. It only lifts `E[payout | pari-mutuel win]`; it has no effect on win probability or fixed-prize tiers.
-- Treat any spending as entertainment, not investment. Under normal jackpot conditions the EV gate will skip most scheduled runs — that is the mathematically correct behavior.
+- Treat any spending as entertainment, not investment. Side-game numbers (Noroc Plus, Noroc, Super Noroc) are printed by the terminal; tick the box, don't copy a number.

@@ -49,6 +49,20 @@ class TestTicketAllocator(unittest.TestCase):
         self.assertGreater(sum(best.tickets.values()), 0)
         self.assertGreater(best.p_any_win, 0)
 
+    def test_default_53_ron_budget_buys_three_joker_tickets(self):
+        best = best_allocation(budget_ron=53.0)
+        self.assertEqual(best.tickets, {"joker": 3, "loto_649": 0, "loto_540": 0})
+        self.assertAlmostEqual(best.total_cost, 52.5, places=2)
+        self.assertAlmostEqual(best.p_any_win, 0.2123, places=3)
+
+    def test_ticket_odds_include_the_side_game_it_pays_for(self):
+        from shared.ticket_allocator import _p_ticket_any_win, _variant_win_prob
+
+        main_only = 1 - (1 - _variant_win_prob("joker")) ** 2
+        self.assertAlmostEqual(main_only, 0.0577, places=4)
+        # Noroc Plus: first or last 2 digits, 1 - 0.99**2
+        self.assertAlmostEqual(_p_ticket_any_win("joker"), 1 - (1 - main_only) * 0.99 ** 2, places=9)
+
     def test_allowed_games_filter(self):
         allocs = enumerate_allocations(budget_ron=40.0, allowed_games={"joker"})
         for a in allocs:

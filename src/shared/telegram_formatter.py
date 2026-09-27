@@ -67,7 +67,9 @@ def format_tickets(tickets: list[dict], draw_date: str) -> list[str]:
                 f"#{i}",
                 *(f" V{j} {_format_variant(game, v)}"
                   for j, v in enumerate(t["variants"], start=1)),
-                f" {_SIDE_NAME[game]}: {t['side_game_number']}",
+                # The terminal prints the side-game number; the player only
+                # ticks the box, so a generated number here would mislead.
+                f" ☑ tick {_SIDE_NAME[game]} (terminal picks the number)",
             ]))
         messages.extend(_chunk("\n".join(header), blocks))
     return messages

@@ -52,13 +52,25 @@ def _variant_win_prob(game: str) -> float:
     return sum(comb(6, m) * comb(34, 5 - m) / total for m in range(4, 6))
 
 
+# P(any prize) of the side game each ticket already pays for (the cost comes
+# from pricing.compute_ticket_cost, which includes the side stake).
+# Noroc Plus / Super Noroc: 6 digits, a prize for matching the first OR last
+# 2..6 digits, so P(any) = 1 - 0.99**2. Noroc: 7 digits, prizes from the last
+# 3 digits up, so about 1 in 1000. Rules: loto.ro "descriere" pages per game.
+SIDE_GAME_P_ANY: dict[str, float] = {
+    "joker": 1.0 - 0.99 ** 2,     # Noroc Plus
+    "loto_540": 1.0 - 0.99 ** 2,  # Super Noroc
+    "loto_649": 0.001,            # Noroc
+}
+
+
 def _p_ticket_any_win(game: str) -> float:
     p = _variant_win_prob(game)
     # From pricing, not a local copy: costs already come from there, so a
     # local variant count that drifted would price a ticket one way and score
     # its odds another.
     v = VARIANTS_PER_TICKET[game]
-    return 1.0 - (1.0 - p) ** v
+    return 1.0 - (1.0 - p) ** v * (1.0 - SIDE_GAME_P_ANY[game])
 
 
 def _p_any_win(tickets: dict[str, int]) -> float:
